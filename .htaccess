@@ -1,0 +1,40 @@
+# Piano Tracker - Configuración Apache
+
+# Habilitar motor de reescritura
+RewriteEngine On
+
+# Prevenir acceso directo a archivos de configuración
+<FilesMatch "^(schema\.sql|README\.md)$">
+    Require all denied
+</FilesMatch>
+
+# Prevenir listado de directorios
+Options -Indexes
+
+# Configuración de caché para assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+</IfModule>
+
+# Compresión GZIP
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript
+</IfModule>
+
+# Seguridad básica
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Charset por defecto
+AddDefaultCharset UTF-8
+
+# Manejo de errores personalizado (opcional)
+# ErrorDocument 404 /piano/404.php
+# ErrorDocument 500 /piano/500.php
