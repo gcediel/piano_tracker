@@ -1,148 +1,243 @@
-# 🎹 Piano Tracker
+# Piano Tracker - Aplicación de seguimiento de práctica de piano
 
-**Aplicación web profesional para gestión de práctica de piano**
+## Características principales
 
-[![PHP Version](https://img.shields.io/badge/PHP-8.0+-blue.svg)](https://www.php.net/)
-[![MySQL Version](https://img.shields.io/badge/MySQL-8.0+-orange.svg)](https://www.mysql.com/)
-[![Version](https://img.shields.io/badge/version-1.0-brightgreen.svg)](CHANGELOG.md)
+✅ **Gestión de repertorio**: CRUD completo de piezas con compositor, título, libro, grado, tempo y ponderación
+✅ **Planificación de sesiones**: Añade actividades (calentamiento, técnica, práctica, repertorio, improvisación, composición)
+✅ **Timer dinámico con AJAX**: Cronómetro que guarda progreso automáticamente cada 5 segundos
+✅ **Algoritmo de selección inteligente**: Sugiere automáticamente qué pieza del repertorio practicar basándose en fallos ponderados de los últimos 30 días
+✅ **Registro de fallos**: Contabiliza errores por pieza durante la práctica
+✅ **Informes detallados**: Estadísticas por día, semana, mes y año con tablas de tiempo y fallos
+✅ **Interfaz responsive**: Diseño limpio y funcional que funciona en desktop y móvil
 
----
+## Instalación
 
-## 📖 Descripción
+### 1. Requisitos
+- Apache 2.4+ con mod_rewrite
+- PHP 7.4+ con PDO MySQL
+- MySQL 5.7+ o MariaDB 10.3+
 
-Piano Tracker es una aplicación web completa diseñada para pianistas que desean llevar un registro sistemático de su práctica. Permite gestionar un repertorio de piezas, registrar sesiones con cronómetro en tiempo real, hacer seguimiento de errores, y obtener sugerencias inteligentes de qué practicar basadas en un algoritmo de priorización.
+### 2. Configurar el entorno LAMP
 
-### ✨ Características principales
+#### En Debian/Ubuntu/MX Linux:
+```bash
+# Instalar LAMP si no lo tienes
+sudo apt update
+sudo apt install apache2 mysql-server php php-mysql libapache2-mod-php
 
-- 🎼 **Gestión de repertorio** con metadatos completos
-- ⏱️ **Sesiones con cronómetro** integrado y seguimiento en tiempo real
-- 📊 **Estadísticas detalladas** con DataTables interactivas
-- 🧮 **Algoritmo de sugerencia** inteligente
-- 📈 **Informes visuales** por periodo
-- 🎯 **Seguimiento de fallos** por pieza con cálculo de medias
-- 💾 **Exportación/importación** de datos
-- 🔧 **Panel administrativo** para gestión manual de sesiones
+# Habilitar mod_rewrite
+sudo a2enmod rewrite
+sudo systemctl restart apache2
+```
 
----
+#### En AlmaLinux/RHEL/CentOS:
+```bash
+# Instalar LAMP
+sudo dnf install httpd mariadb-server php php-mysqlnd
 
-## 🚀 Instalación Rápida
+# Iniciar servicios
+sudo systemctl start httpd
+sudo systemctl start mariadb
+sudo systemctl enable httpd
+sudo systemctl enable mariadb
+```
 
-### Requisitos
-
-- PHP 8.0+
-- MySQL 8.0+
-- Apache/Nginx
-
-### Pasos
+### 3. Copiar archivos
 
 ```bash
-# 1. Clonar repositorio
-git clone https://github.com/tu-usuario/piano-tracker.git
+# Copiar la aplicación a tu DocumentRoot
+sudo cp -r piano_tracker /var/www/html/piano
 
-# 2. Crear base de datos
-mysql -u root -p
+# Asignar permisos correctos
+sudo chown -R www-data:www-data /var/www/html/piano  # Debian/Ubuntu
+# O
+sudo chown -R apache:apache /var/www/html/piano      # AlmaLinux/RHEL
+
+sudo chmod -R 755 /var/www/html/piano
 ```
+
+### 4. Crear la base de datos
+
+```bash
+# Acceder a MySQL
+mysql -u root -p
+
+# Ejecutar el script SQL
+mysql -u root -p < /var/www/html/piano/schema.sql
+
+# O manualmente:
+# mysql> source /var/www/html/piano/schema.sql;
+```
+
+### 5. Configurar credenciales
+
+Edita el archivo `config/database.php` con tus credenciales:
+
+```php
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'piano_tracker');
+define('DB_USER', 'root');          // Cambia esto
+define('DB_PASS', 'tu_password');   // Cambia esto
+```
+
+**RECOMENDACIÓN DE SEGURIDAD**: Crea un usuario MySQL específico para la aplicación:
 
 ```sql
-CREATE DATABASE piano_tracker CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'piano_user'@'localhost' IDENTIFIED BY 'contraseña_segura';
+CREATE USER 'piano_user'@'localhost' IDENTIFIED BY 'password_seguro';
 GRANT ALL PRIVILEGES ON piano_tracker.* TO 'piano_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### 6. Configurar Apache (opcional pero recomendado)
+
+Crea un VirtualHost en `/etc/apache2/sites-available/piano.conf`:
+
+```apache
+<VirtualHost *:80>
+    ServerName piano.local
+    DocumentRoot /var/www/html/piano
+    
+    <Directory /var/www/html/piano>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    ErrorLog ${APACHE_LOG_DIR}/piano_error.log
+    CustomLog ${APACHE_LOG_DIR}/piano_access.log combined
+</VirtualHost>
 ```
 
 ```bash
-# 3. Importar esquema
-mysql -u piano_user -p piano_tracker < database/schema.sql
+# Habilitar el sitio
+sudo a2ensite piano.conf
+sudo systemctl reload apache2
 
-# 4. Configurar config/database.php
-
-# 5. Acceder
-http://localhost/piano-tracker/
+# Añadir entrada en /etc/hosts
+echo "127.0.0.1 piano.local" | sudo tee -a /etc/hosts
 ```
 
-Ver [DOCUMENTACION_TECNICA.md](DOCUMENTACION_TECNICA.md) para más detalles.
+### 7. Acceder a la aplicación
 
----
+- Con VirtualHost: http://piano.local
+- Sin VirtualHost: http://localhost/piano
 
-## 📋 Funcionalidades
+## Uso de la aplicación
 
-| Módulo | Descripción |
-|--------|-------------|
-| **Inicio** | Dashboard con métricas, rachas y últimas sesiones |
-| **Repertorio** | CRUD de piezas con estadísticas y código de colores |
-| **Sesión** | Cronómetro en tiempo real con registro de fallos |
-| **Informes** | Análisis estadístico por periodos |
-| **Admin** | Gestión manual de sesiones históricas |
+### 1. Gestionar repertorio
+- Ve a **Repertorio** para añadir tus piezas
+- Campos obligatorios: Compositor y Título
+- La **Ponderación** determina la frecuencia de práctica (1.25 = 25% más frecuente)
+- Puedes desactivar piezas que no quieras practicar temporalmente
 
----
+### 2. Crear una sesión de práctica
+- Ve a **Sesión** → Planificar nueva sesión
+- Añade actividades en el orden que desees
+- Puedes añadir múltiples actividades del mismo tipo
+- Para **Repertorio**, la aplicación sugerirá automáticamente la pieza según el algoritmo
+- Añade notas opcionales para cada actividad (ej: "Escalas en Do Mayor, compases 12-24")
 
-## 🧮 Algoritmo de Sugerencia
+### 3. Usar el timer
+- Haz clic en **Iniciar** para comenzar el cronómetro
+- El tiempo se guarda automáticamente cada 5 segundos
+- Para actividades de repertorio, registra los fallos cometidos
+- Haz clic en **Siguiente actividad** para pasar a la siguiente
+- Haz clic en **Finalizar sesión** cuando termines
+
+### 4. Ver informes
+- Ve a **Informes**
+- Selecciona el periodo: día, semana, mes o año
+- Verás estadísticas de tiempo por actividad y fallos por pieza
+- Los informes incluyen gráficos visuales de tendencias
+
+## Algoritmo de selección de piezas
+
+El sistema calcula un **score** para cada pieza:
 
 ```
-Score = SUM((10 - Fallos_día) × Peso_temporal) × (1 / Ponderación)
+score = (media_fallos_últimos_30_días) × ponderación
 ```
 
-- Inversión de fallos (0 fallos = 10 pts, 10+ = 0 pts)
-- Peso temporal lineal (reciente = más peso)
-- Factor de ponderación (importante = más prioridad)
-- **MENOR score = MAYOR prioridad**
+- **Media de fallos**: Total de fallos / 30 días (incluye días sin práctica como 0)
+- **Ponderación**: Factor multiplicador (mayor valor = más prioridad)
+- La pieza con **menor score** es la sugerida
 
----
+**Ejemplo**:
+- Pieza A: 60 fallos en 30 días, ponderación 1.00 → score = 2.0 × 1.00 = 2.0
+- Pieza B: 30 fallos en 30 días, ponderación 1.50 → score = 1.0 × 1.50 = 1.5 ✓ **Seleccionada**
 
-## 🗂️ Estructura
+## Estructura de archivos
 
 ```
 piano_tracker/
-├── config/         # Configuración y conexión DB
-├── includes/       # Header/footer compartidos
-├── assets/css/     # Estilos
-├── database/       # Schema SQL
-├── *.php           # Páginas principales
-├── DOCUMENTACION_TECNICA.md
-└── README.md
+├── config/
+│   └── database.php          # Configuración de BD y funciones auxiliares
+├── includes/
+│   ├── header.php            # Header común
+│   └── footer.php            # Footer común
+├── ajax/
+│   └── timer.php             # Endpoint AJAX para timer
+├── assets/
+│   ├── css/
+│   │   └── style.css         # Estilos
+│   └── js/
+│       └── app.js            # JavaScript principal
+├── index.php                 # Dashboard principal
+├── repertorio.php            # Gestión de piezas
+├── sesion.php                # Planificación y timer
+├── informes.php              # Estadísticas e informes
+├── schema.sql                # Esquema de base de datos
+└── README.md                 # Este archivo
 ```
 
+## Próximas funcionalidades sugeridas
+
+- [ ] Exportar informes a PDF/Excel
+- [ ] Gráficos interactivos con Chart.js
+- [ ] Etiquetas/categorías para piezas
+- [ ] Objetivo de práctica semanal
+- [ ] Notificaciones de recordatorio
+- [ ] Modo oscuro
+- [ ] API REST para integración con apps móviles
+- [ ] Backup automático de base de datos
+
+## Solución de problemas
+
+### Error de conexión a MySQL
+```bash
+# Verificar que MySQL está corriendo
+sudo systemctl status mysql  # Debian/Ubuntu
+sudo systemctl status mariadb # AlmaLinux
+
+# Reiniciar si es necesario
+sudo systemctl restart mysql
+```
+
+### Error de permisos
+```bash
+# Verificar permisos
+ls -la /var/www/html/piano
+
+# Corregir si es necesario
+sudo chown -R www-data:www-data /var/www/html/piano
+sudo chmod -R 755 /var/www/html/piano
+```
+
+### El timer no guarda
+- Verificar que `/piano/ajax/timer.php` es accesible
+- Revisar los logs de Apache: `sudo tail -f /var/log/apache2/error.log`
+- Verificar que JavaScript está habilitado en el navegador
+
+### No se muestran los CSS
+- Verificar rutas en `includes/header.php`
+- Asegurarse de que Apache permite `.htaccess` (AllowOverride All)
+
+## Contacto y soporte
+
+Para consultas o mejoras, puedes modificar libremente este código según tus necesidades.
+
 ---
 
-## 🛠️ Stack Tecnológico
-
-- **Backend:** PHP 8.x + PDO
-- **Base de datos:** MySQL 8.x
-- **Frontend:** HTML5 + CSS3 + JavaScript
-- **Librerías:** DataTables, jQuery
-
----
-
-## 📚 Documentación
-
-- [📖 Documentación Técnica](DOCUMENTACION_TECNICA.md)
-- [📝 Changelog](CHANGELOG.md)
-- [🗄️ Schema SQL](database/schema.sql)
-
----
-
-## 🤝 Contribuir
-
-1. Fork el proyecto
-2. Crea rama feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit cambios (`git commit -am 'Añadir funcionalidad'`)
-4. Push (`git push origin feature/nueva-funcionalidad`)
-5. Abre Pull Request
-
----
-
-## 📝 Licencia
-
-[Especificar licencia]
-
----
-
-## 👤 Autor
-
-**Guillermo** - Enero 2025
-
----
-
-<p align="center">
-  <strong>Piano Tracker v1.0</strong><br>
-  Hecho con ❤️ para pianistas
-</p>
+**Versión**: 1.0.0  
+**Fecha**: Enero 2026  
+**Licencia**: Uso personal
