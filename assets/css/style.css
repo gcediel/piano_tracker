@@ -259,7 +259,7 @@ table thead tr:hover {
     margin-bottom: 0.5rem;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .actividad-item.activa {

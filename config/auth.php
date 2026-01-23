@@ -46,7 +46,7 @@ function cerrarSesion() {
 // Requerir autenticación (usar en páginas protegidas)
 function requerirAuth() {
     if (!estaAutenticado()) {
-        header('Location: /piano/login.php');
+        header('Location: login.php');
         exit;
     }
 }

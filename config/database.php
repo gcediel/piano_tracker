@@ -2,8 +2,8 @@
 // Configuración de la base de datos
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'piano_tracker');
-define('DB_USER', 'root');
-define('DB_PASS', 'T1o6m1a2I');
+define('DB_USER', 'piano_user');
+define('DB_PASS', 'o4Q9uLlcNz');
 define('DB_CHARSET', 'utf8mb4');
 
 // Crear conexión PDO

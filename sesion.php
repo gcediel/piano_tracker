@@ -100,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_sesion'])) {
 $sesion = null;
 $actividades = [];
 $actividadActual = null;
+$actividadesPlantilla = []; // Para pre-rellenar formulario de nueva sesión
 
 if (isset($_GET['sesion'])) {
     $stmt = $db->prepare("SELECT * FROM sesiones WHERE id = :id");
@@ -107,7 +108,7 @@ if (isset($_GET['sesion'])) {
     $sesion = $stmt->fetch();
     
     if ($sesion) {
-        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo 
+        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo 
                               FROM actividades a 
                               LEFT JOIN piezas p ON a.pieza_id = p.id
                               WHERE a.sesion_id = :id 
@@ -144,6 +145,35 @@ if (isset($_GET['sesion'])) {
         ");
         $stmt->execute([':sesion_id' => $sesion['id']]);
         $piezasPracticadas = $stmt->fetchAll();
+    }
+} else {
+    // Si no hay sesión activa, cargar actividades de la última sesión finalizada como plantilla
+    $stmt = $db->prepare("
+        SELECT a.tipo, a.notas
+        FROM actividades a
+        JOIN sesiones s ON a.sesion_id = s.id
+        WHERE s.estado = 'finalizada'
+        ORDER BY s.fecha DESC, s.id DESC, a.orden
+        LIMIT 20
+    ");
+    $stmt->execute();
+    $todasActividades = $stmt->fetchAll();
+    
+    // Agrupar actividades por sesión (solo necesitamos la más reciente)
+    if (!empty($todasActividades)) {
+        $stmt = $db->prepare("
+            SELECT a.tipo, a.notas
+            FROM actividades a
+            WHERE a.sesion_id = (
+                SELECT id FROM sesiones 
+                WHERE estado = 'finalizada' 
+                ORDER BY fecha DESC, id DESC 
+                LIMIT 1
+            )
+            ORDER BY a.orden
+        ");
+        $stmt->execute();
+        $actividadesPlantilla = $stmt->fetchAll();
     }
 }
 
@@ -210,6 +240,9 @@ include 'includes/header.php';
                 <span id="piezaActualInfo">
                     <?php if ($actividadActual['compositor']): ?>
                     <br><small><?php echo htmlspecialchars($actividadActual['compositor'] . ' - ' . $actividadActual['titulo']); ?></small>
+                    <?php if ($actividadActual['tempo']): ?>
+                    <br><small style="color: #f39c12; font-weight: bold;">♩ = <?php echo $actividadActual['tempo']; ?> BPM</small>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </span>
                 <?php if ($actividadActual['notas']): ?>
@@ -383,6 +416,47 @@ function agregarActividad() {
     document.getElementById('notasActividad').value = '';
 }
 
+<?php if (!$sesion && !empty($actividadesPlantilla)): ?>
+// Pre-rellenar actividades de la última sesión
+document.addEventListener('DOMContentLoaded', function() {
+    const actividadesPlantilla = <?php echo json_encode($actividadesPlantilla); ?>;
+    const tiposNombres = {
+        'calentamiento': 'Calentamiento',
+        'tecnica': 'Técnica',
+        'practica': 'Práctica',
+        'repertorio': 'Repertorio',
+        'improvisacion': 'Improvisación',
+        'composicion': 'Composición'
+    };
+    
+    const container = document.getElementById('actividadesContainer');
+    
+    actividadesPlantilla.forEach(function(act, index) {
+        const div = document.createElement('div');
+        div.className = 'actividad-item';
+        div.innerHTML = `
+            <div class="actividad-info" style="flex: 1;">
+                <strong>${tiposNombres[act.tipo]}</strong>
+                <div style="margin-top: 0.5rem;">
+                    <input type="text" 
+                           id="notas_${index}" 
+                           value="${act.notas || ''}" 
+                           placeholder="Editar notas..."
+                           style="width: 100%; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;"
+                           oninput="document.getElementById('notas_hidden_${index}').value = this.value">
+                </div>
+                <input type="hidden" id="notas_hidden_${index}" name="actividades[${index}][notas]" value="${act.notas || ''}">
+                <input type="hidden" name="actividades[${index}][tipo]" value="${act.tipo}">
+            </div>
+            <button type="button" class="btn btn-danger btn-small" onclick="this.parentElement.remove()">Eliminar</button>
+        `;
+        container.appendChild(div);
+    });
+    
+    actividadesCount = actividadesPlantilla.length;
+});
+<?php endif; ?>
+
 // Timer JavaScript
 let timerInterval = null;
 let tiempoActual = 0;
@@ -415,7 +489,7 @@ function iniciarTimer() {
     if (btnPausar) btnPausar.style.display = 'inline-block';
     
     // Marcar actividad como en curso
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -449,7 +523,7 @@ function pausarTimer() {
 }
 
 function guardarTiempo() {
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -464,7 +538,7 @@ function guardarNotas() {
     const notas = document.getElementById('notasActividad').value;
     const actividadId = document.getElementById('actividadId').value;
     
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -517,7 +591,7 @@ function completarPieza() {
     // Guardar tiempo actual
     guardarTiempo();
     
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -533,8 +607,12 @@ function completarPieza() {
         if (data.success && data.siguiente_pieza) {
             // Actualizar interfaz con la nueva pieza
             document.getElementById('piezaId').value = data.siguiente_pieza.id;
+            let tempoHtml = '';
+            if (data.siguiente_pieza.tempo) {
+                tempoHtml = '<br><small style="color: #f39c12; font-weight: bold;">♩ = ' + data.siguiente_pieza.tempo + ' BPM</small>';
+            }
             document.getElementById('piezaActualInfo').innerHTML = 
-                '<br><small>' + data.siguiente_pieza.compositor + ' - ' + data.siguiente_pieza.titulo + '</small>';
+                '<br><small>' + data.siguiente_pieza.compositor + ' - ' + data.siguiente_pieza.titulo + '</small>' + tempoHtml;
             document.getElementById('fallos').value = 0;
             
             // Actualizar contador
@@ -574,7 +652,7 @@ function terminarRepertorio() {
         pausarTimer();
     }
     
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -603,7 +681,7 @@ function siguienteActividad() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -636,7 +714,7 @@ function finalizarSesion() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
-    fetch('/piano/ajax/timer.php', {
+    fetch('ajax/timer.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({

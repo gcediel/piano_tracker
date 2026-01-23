@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Fondo -->
+  <rect width="32" height="32" fill="#2c3e50" rx="4"/>
+  
+  <!-- Teclas blancas -->
+  <rect x="4" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  <rect x="8" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  <rect x="12" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  <rect x="16" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  <rect x="20" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  <rect x="24" y="8" width="4" height="16" fill="#ffffff" stroke="#2c3e50" stroke-width="0.5"/>
+  
+  <!-- Teclas negras -->
+  <rect x="6.5" y="8" width="2.5" height="10" fill="#1a1a1a"/>
+  <rect x="10.5" y="8" width="2.5" height="10" fill="#1a1a1a"/>
+  <rect x="17" y="8" width="2.5" height="10" fill="#1a1a1a"/>
+  <rect x="21" y="8" width="2.5" height="10" fill="#1a1a1a"/>
+  <rect x="25" y="8" width="2.5" height="10" fill="#1a1a1a"/>
+</svg>

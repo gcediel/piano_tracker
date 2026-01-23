@@ -4,6 +4,6 @@
             <p>&copy; <?php echo date('Y'); ?> Piano Tracker - Seguimiento de práctica de piano</p>
         </div>
     </footer>
-    <script src="/piano/assets/js/app.js"></script>
+    <script src="assets/js/app.js"></script>
 </body>
 </html>
