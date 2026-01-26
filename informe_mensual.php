@@ -222,6 +222,18 @@ include 'includes/header.php';
 ?>
 
 <style>
+/* Eliminar limitación de ancho en esta página para que la tabla use todo el espacio */
+.container {
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 10px !important;
+}
+
+/* Asegurar que las cards también usen todo el ancho */
+.card {
+    max-width: none !important;
+}
+
 @media print {
     @page {
         size: landscape;
@@ -471,22 +483,22 @@ include 'includes/header.php';
             <tbody>
                 <?php foreach ($piezas as $pieza): ?>
                 <tr style="background: <?php echo getColorFallos($pieza['media_fallos']); ?>; color: <?php echo getColorTextoFallos($pieza['media_fallos']); ?>">
-                    <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: nowrap; color: black;">
                         <?php echo htmlspecialchars($pieza['libro'] ?? '-'); ?>
                     </td>
-                    <td class="col-fija" style="text-align: center; color: black;">
+                    <td class="col-fija" style="text-align: center; white-space: nowrap; color: black;">
                         <?php echo $pieza['grado'] ?? '-'; ?>
                     </td>
-                    <td class="col-fija" style="white-space: normal; color: black;">
+                    <td class="col-fija" style="white-space: nowrap; color: black;">
                         <?php echo htmlspecialchars($pieza['compositor']); ?>
                     </td>
-                    <td class="col-fija" style="white-space: normal; color: black;">
+                    <td class="col-fija" style="white-space: nowrap; color: black;">
                         <strong><?php echo htmlspecialchars($pieza['titulo']); ?></strong>
                     </td>
-                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; color: black;">
+                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: nowrap; color: black;">
                         <?php echo $pieza['tempo'] ? '♩=' . $pieza['tempo'] : '-'; ?>
                     </td>
-                    <td class="col-fija" style="font-size: 0.75rem; color: black;">
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: nowrap; color: black;">
                         <?php echo htmlspecialchars($pieza['instrumento'] ?? 'Piano'); ?>
                     </td>
                     <?php foreach ($todosDias as $dia): 

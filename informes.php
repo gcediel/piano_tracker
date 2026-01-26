@@ -220,7 +220,7 @@ include 'includes/header.php';
     
     <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid #e9ecef;">
         <a href="informe_mensual.php" class="btn btn-success" style="font-size: 1.05rem; padding: 0.7rem 1.5rem;">
-            📄 Informes mensuales detallados
+            Informes mensuales detallados
         </a>
     </div>
 </div>
