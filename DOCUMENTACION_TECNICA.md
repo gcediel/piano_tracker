@@ -1,9 +1,9 @@
-# Piano Tracker - Documentación Técnica v1.0
+# Piano Tracker - Documentación Técnica v1.8.5
 
 **Aplicación web para gestión de práctica de piano**  
 **Autor:** Guillermo  
-**Fecha:** 22 Enero 2025  
-**Versión:** 1.0  
+**Fecha:** 26 Enero 2025  
+**Versión:** 1.8.5  
 **Stack:** PHP 8.x + MySQL 8.x + Vanilla JavaScript
 
 ---
@@ -125,6 +125,8 @@ piano_tracker/
 ├── includes/
 │   ├── header.php            # Cabecera HTML + navegación
 │   └── footer.php            # Pie de página HTML
+├── ajax/
+│   └── timer.php             # Handler AJAX para cronómetro
 ├── assets/
 │   └── css/
 │       └── style.css         # Estilos globales
@@ -134,6 +136,7 @@ piano_tracker/
 ├── repertorio.php            # Gestión de piezas del repertorio
 ├── sesion.php                # Sesiones de práctica
 ├── informes.php              # Estadísticas y reportes
+├── informe_mensual.php       # Informe mensual detallado (PDF)
 ├── admin.php                 # Panel de administración
 ├── gestionar_sesiones.php    # CRUD de sesiones manuales
 └── DOCUMENTACION_TECNICA.md  # Este archivo
@@ -316,13 +319,15 @@ WHERE f.fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
 GROUP BY p.id
 ```
 
-**Códigos de color por media:**
-- 🟢 Verde (< 0.5): Perfección
-- 🔵 Azul (0.5-1.5): Excelente
-- 🟡 Amarillo (1.5-2.5): Muy bien
-- 🟠 Naranja (2.5-3.5): Bien
-- 🟣 Morado (3.5-5): Mejorable
-- 🔴 Rojo (> 5): Atención
+**Códigos de color por media (adaptado para daltonismo):**
+- 🔵 Azul oscuro (#2E5F8A) - 0 fallos o < 0.5: Perfección
+- 🔵 Azul medio (#4A7BA7) - 0.5-1.5: Excelente  
+- 🔵 Azul claro (#A3C1DA) - 1.5-2.5: Muy bien
+- 🟢 Verde amarillento (#D4E89E) - 2.5-3.5: Bien
+- ⚫ Gris (#9B9B9B) - 3.5-5: Mejorable
+- 🔴 Rojo (#E57373) - > 5: Atención
+
+**Nota:** Sistema de 6 niveles diseñado para ser distinguible por personas con daltonismo. Los colores se aplican como fondo de celda con texto blanco o negro según el contraste necesario.
 
 ---
 
@@ -450,6 +455,102 @@ ORDER BY s.fecha
 - **Tabla con DataTables:** Búsqueda y ordenamiento de sesiones
 
 **Importante:** Las sesiones creadas manualmente se marcan automáticamente como `estado='finalizada'`.
+
+---
+
+### 7. Informe Mensual (`informe_mensual.php`)
+
+**Propósito:** Generar informe mensual detallado con tabla completa de práctica diaria por pieza.
+
+**Funcionalidades:**
+- **Tabla transpuesta** de práctica mensual:
+  - Filas: Piezas del repertorio
+  - Columnas: Días del mes
+  - Celdas: Número de fallos por día (código de colores)
+- **Columnas fijas iniciales:**
+  - Libro, Grado, Compositor, Nombre, Tempo, Instrumento
+- **Columnas estadísticas finales:**
+  - Días practicados (días distintos del mes)
+  - Media de fallos del mes
+  - Total de minutos practicados
+- **Tabla de actividades:**
+  - Resumen por tipo de actividad
+  - Días practicados por tipo
+  - Total de minutos por tipo
+- **Sistema de colores para daltonismo:**
+  - 6 niveles distinguibles (azul oscuro → azul medio → azul claro → verde → gris → rojo)
+  - Basado en número exacto de fallos por día
+  - Texto con contraste WCAG AA (blanco o negro según fondo)
+- **Exportación a PDF:**
+  - Orientación apaisada (landscape)
+  - Ancho completo de página (`max-width: none`)
+  - Colores preservados con `print-color-adjust: exact`
+  - **Importante:** Activar "Gráficos de fondo" en el navegador al imprimir
+- **Ajuste automático de texto:**
+  - Columnas fijas con `white-space: normal` (multi-línea)
+  - Mejor legibilidad sin tabla excesivamente ancha
+
+**Cálculo de estadísticas mensuales:**
+```sql
+-- Fallos por pieza y día
+SELECT 
+    p.id,
+    DATE(f.fecha_registro) as dia,
+    SUM(f.cantidad) as fallos_dia
+FROM piezas p
+JOIN fallos f ON p.id = f.pieza_id
+WHERE YEAR(f.fecha_registro) = :anio 
+  AND MONTH(f.fecha_registro) = :mes
+GROUP BY p.id, DATE(f.fecha_registro)
+
+-- Días practicados por pieza
+SELECT 
+    p.id,
+    COUNT(DISTINCT DATE(f.fecha_registro)) as dias_practicados
+FROM piezas p
+JOIN fallos f ON p.id = f.pieza_id
+WHERE YEAR(f.fecha_registro) = :anio 
+  AND MONTH(f.fecha_registro) = :mes
+GROUP BY p.id
+
+-- Media de fallos del mes
+SUM(total_fallos) / COUNT(DISTINCT dias) as media_mes
+```
+
+**Códigos de color por número de fallos (adaptado para daltonismo):**
+- 🔵 Azul oscuro (#2E5F8A) - 0 fallos: Perfección
+- 🔵 Azul medio (#4A7BA7) - 1 fallo: Excelente
+- 🔵 Azul claro (#A3C1DA) - 2 fallos: Muy bien
+- 🟢 Verde amarillento (#D4E89E) - 3 fallos: Bien
+- ⚫ Gris (#9B9B9B) - 4 fallos: Mejorable
+- 🔴 Rojo (#E57373) - 5+ fallos: Atención
+
+**CSS para preservar colores en PDF:**
+```css
+* {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+@media print {
+    @page {
+        size: landscape;
+        margin: 1cm;
+    }
+    
+    table, tr, td, th {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+```
+
+**Nota importante sobre exportación PDF:**
+Para que los colores se mantengan en el PDF exportado, es necesario:
+1. Activar "Gráficos de fondo" en el diálogo de impresión del navegador
+2. Chrome/Brave/Edge: Ctrl+P → Más ajustes → ☑ Gráficos de fondo
+3. Firefox: Ctrl+P → Configuración → ☑ Imprimir fondos
+4. Safari: ⌘+P → Safari → ☑ Imprimir fondos
 
 ---
 
