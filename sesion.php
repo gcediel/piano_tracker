@@ -564,7 +564,13 @@ function guardarNotas() {
                 infoActividad.appendChild(br);
                 infoActividad.appendChild(small);
             }
-            alert('✓ Notas guardadas correctamente');
+            // Mostrar confirmación breve
+            const input = document.getElementById('notasActividad');
+            const originalBorder = input.style.border;
+            input.style.border = '2px solid #27ae60';
+            setTimeout(() => {
+                input.style.border = originalBorder;
+            }, 500);
         } else {
             alert('Error al guardar notas');
         }
@@ -574,6 +580,26 @@ function guardarNotas() {
         alert('Error al guardar notas');
     });
 }
+
+// Auto-guardar notas cada 3 segundos si han cambiado
+let notasTimer = null;
+let ultimasNotasGuardadas = '';
+document.addEventListener('DOMContentLoaded', function() {
+    const inputNotas = document.getElementById('notasActividad');
+    if (inputNotas) {
+        ultimasNotasGuardadas = inputNotas.value;
+        inputNotas.addEventListener('input', function() {
+            clearTimeout(notasTimer);
+            notasTimer = setTimeout(function() {
+                const notasActuales = inputNotas.value;
+                if (notasActuales !== ultimasNotasGuardadas) {
+                    guardarNotas();
+                    ultimasNotasGuardadas = notasActuales;
+                }
+            }, 3000); // 3 segundos después de dejar de escribir
+        });
+    }
+});
 
 function completarPieza() {
     const fallos = document.getElementById('fallos')?.value || 0;

@@ -8,6 +8,22 @@ $periodo = $_GET['periodo'] ?? 'mes';
 $anio = $_GET['anio'] ?? date('Y');
 $mes = $_GET['mes'] ?? date('m');
 
+// Nombres de meses en castellano
+$mesesCastellano = [
+    1 => 'Enero',
+    2 => 'Febrero',
+    3 => 'Marzo',
+    4 => 'Abril',
+    5 => 'Mayo',
+    6 => 'Junio',
+    7 => 'Julio',
+    8 => 'Agosto',
+    9 => 'Septiembre',
+    10 => 'Octubre',
+    11 => 'Noviembre',
+    12 => 'Diciembre'
+];
+
 // Calcular fechas según periodo
 switch ($periodo) {
     case 'dia':
@@ -182,7 +198,7 @@ include 'includes/header.php';
                 <?php for ($i = 1; $i <= 12; $i++): ?>
                 <option value="<?php echo str_pad($i, 2, '0', STR_PAD_LEFT); ?>" 
                         <?php echo $mes == str_pad($i, 2, '0', STR_PAD_LEFT) ? 'selected' : ''; ?>>
-                    <?php echo strftime('%B', mktime(0, 0, 0, $i, 1)); ?>
+                    <?php echo $mesesCastellano[$i]; ?>
                 </option>
                 <?php endfor; ?>
             </select>
@@ -201,6 +217,12 @@ include 'includes/header.php';
             <button type="submit" class="btn btn-primary">Generar informe</button>
         </div>
     </form>
+    
+    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid #e9ecef;">
+        <a href="informe_mensual.php" class="btn btn-success" style="font-size: 1.05rem; padding: 0.7rem 1.5rem;">
+            📄 Informes mensuales detallados
+        </a>
+    </div>
 </div>
 
 <div class="card">

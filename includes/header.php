@@ -22,24 +22,22 @@ requerirAuth();
                 <h1>
                     <svg width="44" height="30" viewBox="0 0 44 30" style="display: inline-block; vertical-align: middle; margin-right: 10px;">
                         <!-- Fondo blanco con borde -->
-                        <rect width="44" height="30" fill="#ffffff" rx="3"/>
-                        <rect width="44" height="30" fill="none" stroke="#34495e" stroke-width="1" rx="3"/>
                         
                         <!-- Teclas blancas (más anchas y visibles) -->
-                        <rect x="6" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="10.5" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="15" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="19.5" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="24" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="28.5" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
-                        <rect x="33" y="6" width="4.5" height="18" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="6" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="10.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="15" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="19.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="24" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="28.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+                        <rect x="33" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
                         
                         <!-- Teclas negras (más grandes y oscuras) -->
-                        <rect x="9" y="6" width="3" height="11" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
-                        <rect x="13.5" y="6" width="3" height="11" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
-                        <rect x="22.5" y="6" width="3" height="11" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
-                        <rect x="27" y="6" width="3" height="11" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
-                        <rect x="31.5" y="6" width="3" height="11" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
+                        <rect x="9" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
+                        <rect x="13.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
+                        <rect x="22.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
+                        <rect x="27" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
+                        <rect x="31.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000000" stroke-width="0.5"/>
                     </svg>
                     Piano Tracker
                 </h1>

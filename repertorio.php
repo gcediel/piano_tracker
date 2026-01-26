@@ -240,7 +240,9 @@ include 'includes/header.php';
             <div class="form-group">
                 <label for="instrumento">Instrumento</label>
                 <input type="text" id="instrumento" name="instrumento" 
-                       value="<?php echo htmlspecialchars($piezaEditar['instrumento'] ?? 'Piano'); ?>">
+                       value="<?php echo htmlspecialchars($piezaEditar['instrumento'] ?? 'Piano'); ?>"
+                       placeholder="Piano o 0">
+                <small style="color: #666; font-size: 0.85rem;">Piano o 0 para piano. Número para otro instrumento.</small>
             </div>
         </div>
         
@@ -282,29 +284,36 @@ include 'includes/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($piezas as $pieza): 
-                    // Cálculo de color y estado
-                    $colorMedia = '#999';
+                    // Cálculo de color y estado según nueva paleta (adaptada para daltonismo)
+                    $colorFondo = '#999';
+                    $colorTexto = 'white';
                     $estadoTexto = 'Sin datos';
                     
                     if ($pieza['media_fallos_dia'] !== null) {
                         $media = $pieza['media_fallos_dia'];
                         if ($media < 0.5) {
-                            $colorMedia = '#27ae60';
-                            $estadoTexto = 'Perfección';
-                        } elseif ($media < 1.5) {
-                            $colorMedia = '#3498db';
+                            $colorFondo = '#2E5F8A';  // Azul oscuro
+                            $colorTexto = 'white';
                             $estadoTexto = 'Excelente';
-                        } elseif ($media < 2.5) {
-                            $colorMedia = '#f39c12';
+                        } elseif ($media < 1.5) {
+                            $colorFondo = '#4A7BA7';  // Azul medio
+                            $colorTexto = 'white';
                             $estadoTexto = 'Muy bien';
-                        } elseif ($media < 3.5) {
-                            $colorMedia = '#e67e22';
+                        } elseif ($media < 2.5) {
+                            $colorFondo = '#A3C1DA';  // Azul claro
+                            $colorTexto = 'black';
                             $estadoTexto = 'Bien';
-                        } elseif ($media < 5) {
-                            $colorMedia = '#9b59b6';
+                        } elseif ($media < 3.5) {
+                            $colorFondo = '#D4E89E';  // Verde
+                            $colorTexto = 'black';
+                            $estadoTexto = 'Aceptable';
+                        } elseif ($media <= 5) {
+                            $colorFondo = '#9B9B9B';  // Gris
+                            $colorTexto = 'white';
                             $estadoTexto = 'Mejorable';
                         } else {
-                            $colorMedia = '#e74c3c';
+                            $colorFondo = '#E57373';  // Rojo
+                            $colorTexto = 'white';
                             $estadoTexto = 'Atención';
                         }
                     }
@@ -327,12 +336,12 @@ include 'includes/header.php';
                         </td>
                         <td style="text-align: center;" data-order="<?php echo $pieza['media_fallos_dia'] ?? 999; ?>">
                             <?php if ($pieza['media_fallos_dia'] !== null): ?>
-                                <span style="color: <?php echo $colorMedia; ?>; font-weight: bold;">
+                                <div style="background: <?php echo $colorFondo; ?>; color: <?php echo $colorTexto; ?>; padding: 0.5rem; border-radius: 4px; font-weight: bold;">
                                     <?php echo number_format($pieza['media_fallos_dia'], 2); ?>
-                                </span>
-                                <small style="color: <?php echo $colorMedia; ?>; display: block; font-size: 0.8em;">
-                                    (<?php echo $estadoTexto; ?>)
-                                </small>
+                                    <small style="display: block; font-size: 0.75em; opacity: 0.9;">
+                                        (<?php echo $estadoTexto; ?>)
+                                    </small>
+                                </div>
                             <?php else: ?>
                                 <span style="color: #999;">-</span>
                             <?php endif; ?>
@@ -342,27 +351,28 @@ include 'includes/header.php';
                                 '<span style="color: var(--success)">✓ Activa</span>' : 
                                 '<span style="color: var(--danger)">✗ Inactiva</span>'; ?>
                         </td>
-                        <td style="white-space: nowrap;">
-                            <a href="?editar=<?php echo $pieza['id']; ?>" class="btn btn-primary btn-small">Editar</a>
-                            <form method="POST" style="display: inline;" onsubmit="return confirm('¿<?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?> esta pieza?');">
-                                <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
-                                <input type="hidden" name="accion" value="<?php echo $pieza['activa'] ? 'desactivar' : 'activar'; ?>">
-                                <button type="submit" class="btn <?php echo $pieza['activa'] ? 'btn-warning' : 'btn-success'; ?> btn-small">
-                                    <?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?>
+                        <td style="padding: 0.3rem;">
+                            <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                <a href="?editar=<?php echo $pieza['id']; ?>" class="btn btn-primary" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; text-align: center;">Editar</a>
+                                <form method="POST" onsubmit="return confirm('¿<?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?> esta pieza?');">
+                                    <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
+                                    <input type="hidden" name="accion" value="<?php echo $pieza['activa'] ? 'desactivar' : 'activar'; ?>">
+                                    <button type="submit" class="btn <?php echo $pieza['activa'] ? 'btn-warning' : 'btn-success'; ?>" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; width: 100%;">
+                                        <?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?>
+                                    </button>
+                                </form>
+                                <?php if ($pieza['activa']): ?>
+                                <button type="button" class="btn btn-danger" disabled title="Primero debes desactivar la pieza" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;">
+                                    Eliminar
                                 </button>
-                            </form>
-                            <!-- Botón Eliminar: siempre visible, pero deshabilitado si está activa -->
-                            <?php if ($pieza['activa']): ?>
-                            <button type="button" class="btn btn-danger btn-small" disabled title="Primero debes desactivar la pieza">
-                                Eliminar
-                            </button>
-                            <?php else: ?>
-                            <form method="POST" style="display: inline;" onsubmit="return confirm('⚠️ ¿ELIMINAR permanentemente esta pieza?\n\nEsta acción NO se puede deshacer.\n\nSolo se puede eliminar si no tiene registros de práctica.');">
-                                <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
-                                <input type="hidden" name="accion" value="eliminar">
-                                <button type="submit" class="btn btn-danger btn-small">Eliminar</button>
-                            </form>
-                            <?php endif; ?>
+                                <?php else: ?>
+                                <form method="POST" onsubmit="return confirm('⚠️ ¿ELIMINAR permanentemente esta pieza?\n\nEsta acción NO se puede deshacer.\n\nSolo se puede eliminar si no tiene registros de práctica.');">
+                                    <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
+                                    <input type="hidden" name="accion" value="eliminar">
+                                    <button type="submit" class="btn btn-danger" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; width: 100%;">Eliminar</button>
+                                </form>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -377,15 +387,15 @@ include 'includes/header.php';
                 <li><strong>M.Fallos:</strong> Media de fallos/día en los últimos 30 días naturales. Se calcula: (Total de fallos últimos 30 días) / 30.</li>
             </ul>
             
-            <strong>Leyenda de Media de fallos/día (últimos 30 días):</strong>
+            <strong>Leyenda de Media de fallos/día (últimos 30 días) - Paleta adaptada para daltonismo:</strong>
             <ul style="margin-top: 0.5rem; margin-bottom: 0;">
-                <li><span style="color: #27ae60; font-weight: bold;">🟢 Verde (&lt; 0.5 fallos/día):</span> Perfección - Dominio total de la pieza</li>
-                <li><span style="color: #3498db; font-weight: bold;">🔵 Azul (0.5-1.5 fallos/día):</span> Excelente - Pieza muy bien trabajada</li>
-                <li><span style="color: #f39c12; font-weight: bold;">🟡 Amarillo (1.5-2.5 fallos/día):</span> Muy bien - Buen nivel de ejecución</li>
-                <li><span style="color: #e67e22; font-weight: bold;">🟠 Naranja (2.5-3.5 fallos/día):</span> Bien - Progreso adecuado</li>
-                <li><span style="color: #9b59b6; font-weight: bold;">🟣 Morado (3.5-5 fallos/día):</span> Mejorable - Necesita más práctica</li>
-                <li><span style="color: #e74c3c; font-weight: bold;">🔴 Rojo (&gt; 5 fallos/día):</span> Atención - Requiere trabajo intensivo</li>
-                <li><span style="color: #999; font-weight: bold;">⚪ Gris (-):</span> Sin datos - No practicada en los últimos 30 días</li>
+                <li><span style="background: #2E5F8A; color: white; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">🔵 Azul oscuro (&lt; 0.5 fallos/día):</span> Excelente - Dominio total de la pieza</li>
+                <li><span style="background: #4A7BA7; color: white; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">🔵 Azul medio (0.5-1.5 fallos/día):</span> Muy bien - Pieza muy bien trabajada</li>
+                <li><span style="background: #A3C1DA; color: black; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">🔵 Azul claro (1.5-2.5 fallos/día):</span> Bien - Buen nivel de ejecución</li>
+                <li><span style="background: #D4E89E; color: black; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">🟢 Verde (2.5-3.5 fallos/día):</span> Aceptable - Progreso adecuado</li>
+                <li><span style="background: #9B9B9B; color: white; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">⚪ Gris (3.5-5 fallos/día):</span> Mejorable - Necesita más práctica</li>
+                <li><span style="background: #E57373; color: white; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: bold;">🔴 Rojo (&gt; 5 fallos/día):</span> Atención - Requiere trabajo intensivo</li>
+                <li><span style="color: #999; font-weight: bold;">⚫ Sin color (-):</span> Sin datos - No practicada en los últimos 30 días</li>
             </ul>
             <p style="margin-top: 0.5rem; margin-bottom: 0; color: #666;">
                 <em><strong>Importante:</strong> La ponderación NO afecta la media de fallos mostrada. Solo se usa en el algoritmo de selección de piezas durante la práctica.</em>
