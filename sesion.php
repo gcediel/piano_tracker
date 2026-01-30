@@ -772,6 +772,31 @@ function actualizarDisplay() {
         String(minutos).padStart(2, '0') + ':' + 
         String(segundos).padStart(2, '0');
 }
+
+// Auto-finalizar sesión al salir de la página sin finalizar
+window.addEventListener('beforeunload', function(e) {
+    // Solo auto-finalizar si hay una sesión activa
+    const sesionId = document.getElementById('sesionId')?.value;
+    const actividadId = document.getElementById('actividadId')?.value;
+    
+    if (!sesionId) return; // No hay sesión activa
+    
+    // Pausar timer si está activo
+    if (timerActivo) {
+        clearInterval(timerInterval);
+    }
+    
+    // Enviar petición síncrona para auto-finalizar (debe ser síncrona en beforeunload)
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/piano/ajax/timer.php', false); // false = síncrono
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify({
+        accion: 'auto_finalizar',
+        sesion_id: sesionId,
+        actividad_id: actividadId,
+        tiempo: tiempoActual
+    }));
+});
 <?php endif; ?>
 </script>
 

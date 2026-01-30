@@ -44,6 +44,13 @@ $stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a
 $stmt->execute();
 $tiempoHoy = $stmt->fetch()['total'] ?? 0;
 
+// Tiempo total esta semana
+$stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a 
+                      JOIN sesiones s ON a.sesion_id = s.id 
+                      WHERE YEARWEEK(s.fecha, 1) = YEARWEEK(CURDATE(), 1)");
+$stmt->execute();
+$tiempoSemana = $stmt->fetch()['total'] ?? 0;
+
 // Tiempo total este mes
 $stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a 
                       JOIN sesiones s ON a.sesion_id = s.id 
@@ -51,12 +58,22 @@ $stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a
 $stmt->execute();
 $tiempoMes = $stmt->fetch()['total'] ?? 0;
 
+// Tiempo total este año
+$stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a 
+                      JOIN sesiones s ON a.sesion_id = s.id 
+                      WHERE YEAR(s.fecha) = YEAR(CURDATE())");
+$stmt->execute();
+$tiempoAnio = $stmt->fetch()['total'] ?? 0;
+
 // Número de piezas activas
 $stmt = $db->prepare("SELECT COUNT(*) as total FROM piezas WHERE activa = 1");
 $stmt->execute();
 $numPiezas = $stmt->fetch()['total'] ?? 0;
 
-// Calcular racha actual de práctica
+// Verificar si hay actividad hoy
+$hayActividadHoy = $tiempoHoy > 0;
+
+// Calcular racha actual de práctica (no contar hoy si no hay actividad)
 $stmt = $db->query("SELECT DISTINCT fecha FROM sesiones ORDER BY fecha DESC");
 $fechasSesiones = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -68,8 +85,14 @@ if (!empty($fechasSesiones)) {
     $hoy = new DateTime();
     $hoy->setTime(0, 0, 0);
     
-    // Calcular racha actual (desde hoy hacia atrás)
+    // Calcular racha actual (desde hoy hacia atrás, pero no contar hoy si no hay actividad)
     $fechaCheck = clone $hoy;
+    
+    // Si no hay actividad hoy, empezar a contar desde ayer
+    if (!$hayActividadHoy) {
+        $fechaCheck->modify('-1 day');
+    }
+    
     foreach ($fechasSesiones as $fecha) {
         $fechaSesion = new DateTime($fecha);
         $fechaSesion->setTime(0, 0, 0);
@@ -154,34 +177,52 @@ include 'includes/header.php';
 ?>
 
 <div class="card">
-    <h2>Dashboard</h2>
+    <h2>📊 Estadísticas de práctica</h2>
     
+    <!-- Tiempo de práctica -->
+    <h3 style="margin-top: 0; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--dark);">⏱️ Tiempo practicado</h3>
     <div class="stats-grid">
         <div class="stat-box">
             <h3><?php echo formatearTiempo($tiempoHoy); ?></h3>
-            <p>Tiempo practicado hoy</p>
+            <p>Hoy</p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo formatearTiempo($tiempoSemana); ?></h3>
+            <p>Esta semana</p>
         </div>
         <div class="stat-box">
             <h3><?php echo formatearTiempo($tiempoMes); ?></h3>
-            <p>Tiempo este mes</p>
+            <p>Este mes</p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo formatearTiempo($tiempoAnio); ?></h3>
+            <p>Este año</p>
+        </div>
+    </div>
+    
+    <!-- Días de práctica -->
+    <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--dark);">📅 Días practicados</h3>
+    <div class="stats-grid">
+        <div class="stat-box">
+            <h3><?php echo $porcentajeSemana; ?>%</h3>
+            <p>Esta semana (<?php echo $diasEstaSemana; ?>/<?php echo $diasTranscurridosSemana; ?> días)</p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo $porcentajeMes; ?>%</h3>
+            <p>Este mes (<?php echo $diasEsteMes; ?>/<?php echo $diasTranscurridosMes; ?> días)</p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo $diasEsteAno; ?> días</h3>
+            <p>Este año (<?php echo $porcentajeAno; ?>%)</p>
         </div>
         <div class="stat-box">
             <h3><?php echo $numPiezas; ?></h3>
             <p>Piezas en repertorio</p>
         </div>
     </div>
-</div>
-
-<?php if ($sesionActiva): ?>
-<div class="alert alert-info">
-    <strong>Sesión en curso</strong> - 
-    <a href="sesion.php?continuar=<?php echo $sesionActiva['id']; ?>" class="btn btn-primary btn-small">Continuar sesión</a>
-</div>
-<?php endif; ?>
-
-<div class="card">
-    <h2>📊 Estadísticas de práctica</h2>
     
+    <!-- Rachas -->
+    <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--dark);">🔥 Rachas</h3>
     <div class="stats-grid">
         <div class="stat-box">
             <h3 style="color: var(--secondary);"><?php echo $rachaActual; ?> días</h3>
@@ -197,16 +238,15 @@ include 'includes/header.php';
             <small style="opacity: 0.7;">🏆 ¡Increíble!</small>
             <?php endif; ?>
         </div>
-        <div class="stat-box">
-            <h3><?php echo $porcentajeSemana; ?>%</h3>
-            <p>Esta semana (<?php echo $diasEstaSemana; ?>/<?php echo $diasTranscurridosSemana; ?> días)</p>
-        </div>
-        <div class="stat-box">
-            <h3><?php echo $porcentajeMes; ?>%</h3>
-            <p>Este mes (<?php echo $diasEsteMes; ?>/<?php echo $diasTranscurridosMes; ?> días)</p>
-        </div>
     </div>
 </div>
+
+<?php if ($sesionActiva): ?>
+<div class="alert alert-info">
+    <strong>Sesión en curso</strong> - 
+    <a href="sesion.php?continuar=<?php echo $sesionActiva['id']; ?>" class="btn btn-primary btn-small">Continuar sesión</a>
+</div>
+<?php endif; ?>
 
 <div class="card">
     <h2>Acciones rápidas</h2>

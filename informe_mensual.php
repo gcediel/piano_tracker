@@ -133,6 +133,24 @@ if ($tiempoTotalMes > 0) {
     }
 }
 
+// Crear array $actividades para el gráfico de tarta
+$nombresActividades = [
+    'calentamiento' => 'Calentamiento',
+    'tecnica' => 'Técnica',
+    'practica' => 'Práctica',
+    'repertorio' => 'Repertorio',
+    'improvisacion' => 'Improvisación',
+    'composicion' => 'Composición'
+];
+$actividades = [];
+foreach ($tipos as $tipo) {
+    $actividades[] = [
+        'tipo' => $tipo,
+        'nombre' => $nombresActividades[$tipo],
+        'tiempo_total' => $totalesPorTipo[$tipo]
+    ];
+}
+
 // Calcular días practicados por actividad
 $diasPracticadosPorTipo = [];
 foreach ($tipos as $tipo) {
@@ -163,6 +181,7 @@ $stmt = $db->prepare("
         p.grado,
         p.instrumento,
         p.tempo,
+        p.ponderacion,
         DAY(s.fecha) as dia,
         f.cantidad as fallos
     FROM piezas p
@@ -195,6 +214,7 @@ foreach ($datosPiezas as $dato) {
             'grado' => $dato['grado'],
             'instrumento' => $dato['instrumento'],
             'tempo' => $dato['tempo'],
+            'ponderacion' => $dato['ponderacion'],
             'fallos_por_dia' => $fallos_por_dia
         ];
     }
@@ -218,6 +238,35 @@ foreach ($piezas as $id => &$pieza) {
 }
 unset($pieza);
 
+// Calcular distribución de piezas por categoría de fallos
+$categorias = [
+    'excelente' => ['count' => 0, 'color' => '#2E5F8A', 'label' => 'Excelente (< 0.5)'],
+    'muy_bien' => ['count' => 0, 'color' => '#4A7BA7', 'label' => 'Muy bien (0.5-1.5)'],
+    'bien' => ['count' => 0, 'color' => '#A3C1DA', 'label' => 'Bien (1.5-2.5)'],
+    'aceptable' => ['count' => 0, 'color' => '#D4E89E', 'label' => 'Aceptable (2.5-3.5)'],
+    'mejorable' => ['count' => 0, 'color' => '#9B9B9B', 'label' => 'Mejorable (3.5-5)'],
+    'atencion' => ['count' => 0, 'color' => '#E57373', 'label' => 'Atención (> 5)']
+];
+
+foreach ($piezas as $pieza) {
+    $media = $pieza['media_fallos'];
+    if ($media < 0.5) {
+        $categorias['excelente']['count']++;
+    } elseif ($media < 1.5) {
+        $categorias['muy_bien']['count']++;
+    } elseif ($media < 2.5) {
+        $categorias['bien']['count']++;
+    } elseif ($media < 3.5) {
+        $categorias['aceptable']['count']++;
+    } elseif ($media <= 5) {
+        $categorias['mejorable']['count']++;
+    } else {
+        $categorias['atencion']['count']++;
+    }
+}
+
+$totalPiezas = count($piezas);
+
 include 'includes/header.php';
 ?>
 
@@ -234,12 +283,33 @@ include 'includes/header.php';
     max-width: none !important;
 }
 
+/* FORZAR IMPRESIÓN DE COLORES - Crítico para mantener los colores en PDF */
+* {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+}
+
 @media print {
     @page {
         size: landscape;
         margin: 1cm;
     }
-    body { font-size: 9pt; background: white; }
+    
+    /* Forzar colores de fondo en impresión */
+    body { 
+        font-size: 9pt; 
+        background: white;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    
+    /* Mantener colores en todas las celdas y filas */
+    table, tr, td, th {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    
     header, footer, .nav-menu, .btn, .no-print { display: none !important; }
     .card { box-shadow: none; page-break-inside: avoid; margin-bottom: 1rem; }
     table { page-break-inside: auto; font-size: 8pt; }
@@ -363,7 +433,10 @@ include 'includes/header.php';
 }
 </style>
 
-<button onclick="window.print()" class="btn btn-primary btn-imprimir no-print">🖨️ Imprimir / Guardar PDF</button>
+<div style="display: flex; gap: 1rem; margin-bottom: 1rem;" class="no-print">
+    <button onclick="window.print()" class="btn btn-primary btn-imprimir">🖨️ Imprimir / Guardar PDF</button>
+    <a href="informes.php" class="btn btn-secondary">← Volver a Informes</a>
+</div>
 
 <div class="card no-print">
     <h2>Seleccionar mes para informe</h2>
@@ -457,11 +530,130 @@ include 'includes/header.php';
             </tbody>
         </table>
     </div>
+    
+    <!-- Gráfico de tarta: Distribución de tiempo por actividad -->
+    <div style="margin-top: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h4 style="margin-top: 0; margin-bottom: 1rem; text-align: center;">📊 Distribución de Tiempo por Tipo de Actividad</h4>
+        
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2rem;">
+            <!-- Gráfico de tarta -->
+            <div style="position: relative; width: 300px; height: 300px;">
+                <canvas id="chartActividades" width="300" height="300"></canvas>
+            </div>
+            
+            <!-- Leyenda del gráfico -->
+            <div style="flex: 1; min-width: 250px;">
+                <div style="display: grid; gap: 0.5rem;">
+                    <?php 
+                    $coloresActividades = [
+                        'calentamiento' => '#FF6B6B',
+                        'tecnica' => '#4ECDC4',
+                        'practica' => '#45B7D1',
+                        'repertorio' => '#FFA07A',
+                        'improvisacion' => '#98D8C8',
+                        'composicion' => '#C7CEEA'
+                    ];
+                    
+                    foreach ($actividades as $act):
+                        if ($act['tiempo_total'] == 0) continue;
+                        $porcentaje = $tiempoTotalMes > 0 ? round(($act['tiempo_total'] / $tiempoTotalMes) * 100, 1) : 0;
+                    ?>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 20px; height: 20px; background: <?php echo $coloresActividades[$act['tipo']]; ?>; border: 1px solid #999; border-radius: 3px;"></div>
+                        <span style="flex: 1;">
+                            <strong><?php echo htmlspecialchars($act['nombre']); ?>:</strong> 
+                            <?php echo formatearTiempo($act['tiempo_total']); ?> (<?php echo $porcentaje; ?>%)
+                        </span>
+                    </div>
+                    <?php endforeach; ?>
+                    <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 2px solid #ddd;">
+                        <strong>Total: <?php echo formatearTiempo($tiempoTotalMes); ?></strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    // Crear gráfico de tarta de actividades
+    (function() {
+        const canvas = document.getElementById('chartActividades');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const centerX = 150;
+        const centerY = 150;
+        const radius = 120;
+        
+        // Datos del gráfico
+        const data = [
+            <?php 
+            $dataPointsAct = [];
+            foreach ($actividades as $act) {
+                if ($act['tiempo_total'] > 0) {
+                    $color = $coloresActividades[$act['tipo']];
+                    $nombre = htmlspecialchars($act['nombre']);
+                    $dataPointsAct[] = "{value: {$act['tiempo_total']}, color: '$color', label: '$nombre'}";
+                }
+            }
+            echo implode(",\n            ", $dataPointsAct);
+            ?>
+        ];
+        
+        const total = data.reduce((sum, item) => sum + item.value, 0);
+        
+        // Dibujar sectores
+        let currentAngle = -Math.PI / 2; // Empezar desde arriba
+        
+        data.forEach(item => {
+            const sliceAngle = (item.value / total) * 2 * Math.PI;
+            
+            // Dibujar sector
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+            ctx.closePath();
+            ctx.fillStyle = item.color;
+            ctx.fill();
+            
+            // Borde blanco entre sectores
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            currentAngle += sliceAngle;
+        });
+        
+        // Círculo blanco en el centro para efecto "donut"
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 0.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        
+        // Texto central - convertir segundos totales a horas
+        const horas = Math.floor(total / 3600);
+        const minutos = Math.floor((total % 3600) / 60);
+        
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        if (horas > 0) {
+            ctx.fillText(horas + 'h ' + minutos + 'm', centerX, centerY - 5);
+        } else {
+            ctx.fillText(minutos + ' min', centerX, centerY - 5);
+        }
+        
+        ctx.font = '12px Arial';
+        ctx.fillText('total', centerX, centerY + 15);
+    })();
+    </script>
 </div>
 
 <?php if (!empty($piezas)): ?>
 <div class="card" style="page-break-before: always;">
-    <h3>Piezas de Repertorio - Fallos por día</h3>
+    <h3>Piezas de Repertorio</h3>
     
     <div class="tabla-horizontal">
         <table>
@@ -473,6 +665,7 @@ include 'includes/header.php';
                     <th class="col-fija-header">Nombre</th>
                     <th class="col-fija-header">Tempo</th>
                     <th class="col-fija-header">Instr</th>
+                    <th class="col-fija-header">Pond</th>
                     <?php foreach ($todosDias as $dia): ?>
                     <th><?php echo $dia; ?></th>
                     <?php endforeach; ?>
@@ -483,23 +676,26 @@ include 'includes/header.php';
             <tbody>
                 <?php foreach ($piezas as $pieza): ?>
                 <tr style="background: <?php echo getColorFallos($pieza['media_fallos']); ?>; color: <?php echo getColorTextoFallos($pieza['media_fallos']); ?>">
-                    <td class="col-fija" style="font-size: 0.75rem; white-space: nowrap; color: black;">
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo htmlspecialchars($pieza['libro'] ?? '-'); ?>
                     </td>
-                    <td class="col-fija" style="text-align: center; white-space: nowrap; color: black;">
+                    <td class="col-fija" style="text-align: center; white-space: normal; color: black;">
                         <?php echo $pieza['grado'] ?? '-'; ?>
                     </td>
-                    <td class="col-fija" style="white-space: nowrap; color: black;">
+                    <td class="col-fija" style="white-space: normal; color: black;">
                         <?php echo htmlspecialchars($pieza['compositor']); ?>
                     </td>
-                    <td class="col-fija" style="white-space: nowrap; color: black;">
+                    <td class="col-fija" style="white-space: normal; color: black;">
                         <strong><?php echo htmlspecialchars($pieza['titulo']); ?></strong>
                     </td>
-                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: nowrap; color: black;">
+                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo $pieza['tempo'] ? '♩=' . $pieza['tempo'] : '-'; ?>
                     </td>
-                    <td class="col-fija" style="font-size: 0.75rem; white-space: nowrap; color: black;">
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo htmlspecialchars($pieza['instrumento'] ?? 'Piano'); ?>
+                    </td>
+                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
+                        <?php echo number_format($pieza['ponderacion'], 2); ?>
                     </td>
                     <?php foreach ($todosDias as $dia): 
                         $fallos = isset($pieza['fallos_por_dia'][$dia]) ? $pieza['fallos_por_dia'][$dia] : null;
@@ -527,6 +723,105 @@ include 'includes/header.php';
             </tbody>
         </table>
     </div>
+    
+    <!-- Gráfico de tarta: Distribución de piezas por categoría -->
+    <div style="margin-top: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h4 style="margin-top: 0; margin-bottom: 1rem; text-align: center;">📊 Distribución de Piezas por Rendimiento</h4>
+        
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2rem;">
+            <!-- Gráfico de tarta -->
+            <div style="position: relative; width: 300px; height: 300px;">
+                <canvas id="chartPiezas" width="300" height="300"></canvas>
+            </div>
+            
+            <!-- Leyenda del gráfico -->
+            <div style="flex: 1; min-width: 250px;">
+                <div style="display: grid; gap: 0.5rem;">
+                    <?php 
+                    foreach ($categorias as $key => $cat):
+                        $porcentaje = $totalPiezas > 0 ? round(($cat['count'] / $totalPiezas) * 100, 1) : 0;
+                        if ($cat['count'] > 0):
+                    ?>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 20px; height: 20px; background: <?php echo $cat['color']; ?>; border: 1px solid #999; border-radius: 3px;"></div>
+                        <span style="flex: 1;"><strong><?php echo $cat['label']; ?>:</strong> <?php echo $cat['count']; ?> pieza<?php echo $cat['count'] != 1 ? 's' : ''; ?> (<?php echo $porcentaje; ?>%)</span>
+                    </div>
+                    <?php 
+                        endif;
+                    endforeach; 
+                    ?>
+                    <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 2px solid #ddd;">
+                        <strong>Total: <?php echo $totalPiezas; ?> pieza<?php echo $totalPiezas != 1 ? 's' : ''; ?> practicadas</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    // Crear gráfico de tarta
+    (function() {
+        const canvas = document.getElementById('chartPiezas');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const centerX = 150;
+        const centerY = 150;
+        const radius = 120;
+        
+        // Datos del gráfico
+        const data = [
+            <?php 
+            $dataPoints = [];
+            foreach ($categorias as $cat) {
+                if ($cat['count'] > 0) {
+                    $dataPoints[] = "{value: {$cat['count']}, color: '{$cat['color']}', label: '{$cat['label']}'}";
+                }
+            }
+            echo implode(",\n            ", $dataPoints);
+            ?>
+        ];
+        
+        const total = data.reduce((sum, item) => sum + item.value, 0);
+        
+        // Dibujar sectores
+        let currentAngle = -Math.PI / 2; // Empezar desde arriba
+        
+        data.forEach(item => {
+            const sliceAngle = (item.value / total) * 2 * Math.PI;
+            
+            // Dibujar sector
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+            ctx.closePath();
+            ctx.fillStyle = item.color;
+            ctx.fill();
+            
+            // Borde blanco entre sectores
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            currentAngle += sliceAngle;
+        });
+        
+        // Círculo blanco en el centro para efecto "donut"
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 0.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        
+        // Texto central
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(total, centerX, centerY - 10);
+        ctx.font = '14px Arial';
+        ctx.fillText('piezas', centerX, centerY + 15);
+    })();
+    </script>
     
     <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem;">
         <strong>📊 Leyenda de colores - Paleta adaptada para daltonismo:</strong>

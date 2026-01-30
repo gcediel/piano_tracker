@@ -219,9 +219,14 @@ include 'includes/header.php';
     </form>
     
     <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid #e9ecef;">
-        <a href="informe_mensual.php" class="btn btn-success" style="font-size: 1.05rem; padding: 0.7rem 1.5rem;">
-            Informes mensuales detallados
-        </a>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <a href="informe_mensual.php" class="btn btn-success" style="font-size: 1.05rem; padding: 0.7rem 1.5rem;">
+                📄 Informes mensuales detallados
+            </a>
+            <a href="informe_anual.php" class="btn btn-warning" style="font-size: 1.05rem; padding: 0.7rem 1.5rem;">
+                📅 Informes anuales detallados
+            </a>
+        </div>
     </div>
 </div>
 

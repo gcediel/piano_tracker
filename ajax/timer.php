@@ -133,10 +133,14 @@ try {
                 // Marcar siguiente como en curso
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'en_curso', fecha_inicio = NOW() WHERE id = :id");
                 $stmt->execute([':id' => $siguiente['id']]);
+            } else {
+                // No hay más actividades pendientes, finalizar sesión
+                $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada' WHERE id = :id");
+                $stmt->execute([':id' => $sesionId]);
             }
             
             $db->commit();
-            echo json_encode(['success' => true]);
+            echo json_encode(['success' => true, 'sesion_finalizada' => empty($siguiente)]);
             break;
             
         case 'siguiente':
@@ -214,6 +218,40 @@ try {
             // Finalizar sesión
             $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada', hora_fin = NOW() WHERE id = :id");
             $stmt->execute([':id' => $input['sesion_id']]);
+            
+            $db->commit();
+            echo json_encode(['success' => true]);
+            break;
+        
+        case 'auto_finalizar':
+            // Auto-finalizar sesión al salir sin finalizar manualmente
+            $db->beginTransaction();
+            
+            // Guardar tiempo de la actividad actual si se proporciona
+            if (!empty($input['actividad_id']) && isset($input['tiempo'])) {
+                $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
+                $stmt->execute([
+                    ':id' => $input['actividad_id'],
+                    ':tiempo' => $input['tiempo']
+                ]);
+            }
+            
+            // Marcar la actividad actual como completada
+            if (!empty($input['actividad_id'])) {
+                $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id AND estado = 'en_curso'");
+                $stmt->execute([':id' => $input['actividad_id']]);
+            }
+            
+            // Obtener sesion_id
+            $sesionId = $input['sesion_id'];
+            
+            // Marcar todas las actividades pendientes como completadas
+            $stmt = $db->prepare("UPDATE actividades SET estado = 'completada' WHERE sesion_id = :sesion_id AND estado = 'pendiente'");
+            $stmt->execute([':sesion_id' => $sesionId]);
+            
+            // Finalizar sesión
+            $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada' WHERE id = :id");
+            $stmt->execute([':id' => $sesionId]);
             
             $db->commit();
             echo json_encode(['success' => true]);
