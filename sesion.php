@@ -3,6 +3,192 @@ require_once 'config/database.php';
 $pageTitle = 'Sesión de práctica - Piano Tracker';
 $db = getDB();
 
+// ============================================
+// PROCESAR PETICIONES AJAX
+// ============================================
+if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+    header('Content-Type: application/json');
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    $accion = $input['accion'] ?? '';
+    
+    try {
+        switch ($accion) {
+            case 'iniciar':
+                $actividadId = $input['actividad_id'];
+                $stmt = $db->prepare("UPDATE actividades SET estado = 'en_curso', fecha_inicio = NOW() WHERE id = :id");
+                $stmt->execute([':id' => $actividadId]);
+                
+                // Actualizar sesión a 'en_curso' si estaba planificada
+                $stmt = $db->prepare("UPDATE sesiones s 
+                                      JOIN actividades a ON s.id = a.sesion_id 
+                                      SET s.estado = 'en_curso' 
+                                      WHERE a.id = :id AND s.estado = 'planificada'");
+                $stmt->execute([':id' => $actividadId]);
+                
+                echo json_encode(['success' => true]);
+                break;
+                
+            case 'guardar':
+                $actividadId = $input['actividad_id'];
+                $tiempo = $input['tiempo'];
+                $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
+                $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
+                echo json_encode(['success' => true]);
+                break;
+                
+            case 'guardar_notas':
+                $actividadId = $input['actividad_id'];
+                $notas = $input['notas'];
+                $stmt = $db->prepare("UPDATE actividades SET notas = :notas WHERE id = :id");
+                $stmt->execute([':notas' => $notas, ':id' => $actividadId]);
+                echo json_encode(['success' => true]);
+                break;
+                
+            case 'completar_pieza':
+                $actividadId = $input['actividad_id'];
+                $piezaId = $input['pieza_id'];
+                $fallos = $input['fallos'];
+                $tiempo = $input['tiempo'];
+                
+                // Guardar tiempo actual
+                $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
+                $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
+                
+                // Registrar fallos
+                $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
+                                      VALUES (:act_id, :pieza_id, :cantidad, NOW())");
+                $stmt->execute([
+                    ':act_id' => $actividadId,
+                    ':pieza_id' => $piezaId,
+                    ':cantidad' => $fallos
+                ]);
+                
+                // Obtener piezas ya practicadas en esta actividad
+                $stmt = $db->prepare("SELECT pieza_id FROM fallos WHERE actividad_id = :id");
+                $stmt->execute([':id' => $actividadId]);
+                $piezasYaSeleccionadas = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                
+                // Obtener siguiente pieza
+                $siguientePieza = obtenerPiezaSugerida($db, $piezasYaSeleccionadas);
+                
+                if ($siguientePieza) {
+                    echo json_encode([
+                        'success' => true,
+                        'siguiente_pieza' => [
+                            'id' => $siguientePieza['id'],
+                            'compositor' => $siguientePieza['compositor'],
+                            'titulo' => $siguientePieza['titulo'],
+                            'tempo' => $siguientePieza['tempo']
+                        ]
+                    ]);
+                } else {
+                    // No hay más piezas, devolver éxito pero sin siguiente
+                    // Esto permitirá al frontend limpiar el piezaId
+                    echo json_encode(['success' => true, 'siguiente_pieza' => null]);
+                }
+                break;
+                
+            case 'terminar_repertorio':
+            case 'siguiente':
+                $actividadId = $input['actividad_id'];
+                $tiempo = $input['tiempo'];
+                $piezaId = $input['pieza_id'] ?? null;
+                $fallos = $input['fallos'] ?? 0;
+                
+                // Guardar tiempo
+                $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
+                $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
+                
+                // Si hay pieza pendiente, registrar fallos
+                if ($piezaId) {
+                    $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
+                                          VALUES (:act_id, :pieza_id, :cantidad, NOW())");
+                    $stmt->execute([
+                        ':act_id' => $actividadId,
+                        ':pieza_id' => $piezaId,
+                        ':cantidad' => $fallos
+                    ]);
+                }
+                
+                // Marcar actividad como completada
+                $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
+                $stmt->execute([':id' => $actividadId]);
+                
+                // Verificar si hay siguiente actividad
+                $stmt = $db->prepare("
+                    SELECT a.sesion_id 
+                    FROM actividades a 
+                    WHERE a.id = :id
+                ");
+                $stmt->execute([':id' => $actividadId]);
+                $sesionId = $stmt->fetch()['sesion_id'];
+                
+                $stmt = $db->prepare("
+                    SELECT COUNT(*) as pendientes 
+                    FROM actividades 
+                    WHERE sesion_id = :sesion_id 
+                    AND estado IN ('pendiente', 'en_curso')
+                ");
+                $stmt->execute([':sesion_id' => $sesionId]);
+                $hayPendientes = $stmt->fetch()['pendientes'] > 0;
+                
+                echo json_encode([
+                    'success' => true,
+                    'hay_siguiente' => $hayPendientes
+                ]);
+                break;
+                
+            case 'finalizar':
+                $sesionId = $input['sesion_id'];
+                $actividadId = $input['actividad_id'];
+                $tiempo = $input['tiempo'];
+                $piezaId = $input['pieza_id'] ?? null;
+                $fallos = $input['fallos'] ?? 0;
+                
+                // Guardar tiempo de actividad actual
+                $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
+                $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
+                
+                // Si hay pieza pendiente, registrar fallos
+                if ($piezaId) {
+                    $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
+                                          VALUES (:act_id, :pieza_id, :cantidad, NOW())");
+                    $stmt->execute([
+                        ':act_id' => $actividadId,
+                        ':pieza_id' => $piezaId,
+                        ':cantidad' => $fallos
+                    ]);
+                }
+                
+                // Marcar actividad actual como completada
+                $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
+                $stmt->execute([':id' => $actividadId]);
+                
+                // Marcar todas las actividades pendientes como completadas
+                $stmt = $db->prepare("UPDATE actividades SET estado = 'completada' WHERE sesion_id = :id AND estado = 'pendiente'");
+                $stmt->execute([':id' => $sesionId]);
+                
+                // Marcar sesión como finalizada
+                $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada' WHERE id = :id");
+                $stmt->execute([':id' => $sesionId]);
+                
+                echo json_encode(['success' => true]);
+                break;
+                
+            default:
+                echo json_encode(['success' => false, 'error' => 'Acción no reconocida']);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================
+// LÓGICA NORMAL DE LA PÁGINA
+// ============================================
+
 $mensaje = '';
 $error = '';
 
@@ -13,7 +199,7 @@ if (isset($_GET['ver'])) {
     $sesionVer = $stmt->fetch();
     
     if ($sesionVer) {
-        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo 
+        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo 
                               FROM actividades a 
                               LEFT JOIN piezas p ON a.pieza_id = p.id
                               WHERE a.sesion_id = :id 
@@ -35,8 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_sesion'])) {
     try {
         $db->beginTransaction();
         
-        // IMPORTANTE: Eliminar sesiones programadas pendientes antes de crear una nueva
-        // Esto evita que se acumulen sesiones planificadas
+        // Eliminar sesiones programadas pendientes antes de crear una nueva
         $stmt = $db->prepare("
             DELETE FROM sesiones 
             WHERE estado = 'planificada' 
@@ -96,11 +281,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_sesion'])) {
     }
 }
 
+// Cargar última sesión para precargar formulario
+$ultimaSesion = null;
+$ultimasActividades = [];
+
+if (!isset($_GET['sesion']) && !isset($_GET['ver'])) {
+    $stmt = $db->query("SELECT * FROM sesiones ORDER BY fecha DESC, id DESC LIMIT 1");
+    $ultimaSesion = $stmt->fetch();
+    
+    if ($ultimaSesion) {
+        $stmt = $db->prepare("SELECT tipo, notas FROM actividades WHERE sesion_id = :id ORDER BY orden");
+        $stmt->execute([':id' => $ultimaSesion['id']]);
+        $ultimasActividades = $stmt->fetchAll();
+    }
+}
+
 // Cargar sesión activa
 $sesion = null;
 $actividades = [];
 $actividadActual = null;
-$actividadesPlantilla = []; // Para pre-rellenar formulario de nueva sesión
 
 if (isset($_GET['sesion'])) {
     $stmt = $db->prepare("SELECT * FROM sesiones WHERE id = :id");
@@ -146,35 +345,6 @@ if (isset($_GET['sesion'])) {
         $stmt->execute([':sesion_id' => $sesion['id']]);
         $piezasPracticadas = $stmt->fetchAll();
     }
-} else {
-    // Si no hay sesión activa, cargar actividades de la última sesión finalizada como plantilla
-    $stmt = $db->prepare("
-        SELECT a.tipo, a.notas
-        FROM actividades a
-        JOIN sesiones s ON a.sesion_id = s.id
-        WHERE s.estado = 'finalizada'
-        ORDER BY s.fecha DESC, s.id DESC, a.orden
-        LIMIT 20
-    ");
-    $stmt->execute();
-    $todasActividades = $stmt->fetchAll();
-    
-    // Agrupar actividades por sesión (solo necesitamos la más reciente)
-    if (!empty($todasActividades)) {
-        $stmt = $db->prepare("
-            SELECT a.tipo, a.notas
-            FROM actividades a
-            WHERE a.sesion_id = (
-                SELECT id FROM sesiones 
-                WHERE estado = 'finalizada' 
-                ORDER BY fecha DESC, id DESC 
-                LIMIT 1
-            )
-            ORDER BY a.orden
-        ");
-        $stmt->execute();
-        $actividadesPlantilla = $stmt->fetchAll();
-    }
 }
 
 include 'includes/header.php';
@@ -210,7 +380,11 @@ include 'includes/header.php';
                     <td><?php echo getNombreActividad($act['tipo']); ?></td>
                     <td>
                         <?php if ($act['tipo'] === 'repertorio' && $act['compositor']): ?>
-                            <strong>🎹 <?php echo htmlspecialchars($act['compositor'] . ' - ' . $act['titulo']); ?></strong>
+                            <strong>🎹 <?php echo htmlspecialchars($act['compositor'] . ' - ' . $act['titulo']); ?>
+                            <?php if ($act['tempo']): ?>
+                            (♩ = <?php echo $act['tempo']; ?>)
+                            <?php endif; ?>
+                            </strong>
                             <?php if ($act['notas']): ?>
                                 <br><small><?php echo nl2br(htmlspecialchars($act['notas'])); ?></small>
                             <?php endif; ?>
@@ -239,10 +413,11 @@ include 'includes/header.php';
                 <strong><?php echo getNombreActividad($actividadActual['tipo']); ?></strong>
                 <span id="piezaActualInfo">
                     <?php if ($actividadActual['compositor']): ?>
-                    <br><small><?php echo htmlspecialchars($actividadActual['compositor'] . ' - ' . $actividadActual['titulo']); ?></small>
+                    <br><small><?php echo htmlspecialchars($actividadActual['compositor'] . ' - ' . $actividadActual['titulo']); ?>
                     <?php if ($actividadActual['tempo']): ?>
-                    <br><small style="color: #f39c12; font-weight: bold;">♩ = <?php echo $actividadActual['tempo']; ?> BPM</small>
+                     (♩ = <?php echo $actividadActual['tempo']; ?>)
                     <?php endif; ?>
+                    </small>
                     <?php endif; ?>
                 </span>
                 <?php if ($actividadActual['notas']): ?>
@@ -261,20 +436,43 @@ include 'includes/header.php';
             </div>
             <h2 id="timerTime">00:00:00</h2>
             
+            <?php
+            // Determinar si es la última actividad
+            $esUltimaActividad = true;
+            $hayActividadesCompletadas = false;
+            foreach ($actividades as $act) {
+                if ($act['estado'] === 'completada') {
+                    $hayActividadesCompletadas = true;
+                }
+                if ($act['id'] != $actividadActual['id'] && $act['estado'] === 'pendiente') {
+                    $esUltimaActividad = false;
+                    break;
+                }
+            }
+            ?>
+            
             <!-- Botones para actividades normales -->
             <div class="timer-controls" id="controlesNormales" style="<?php echo $actividadActual['tipo'] === 'repertorio' ? 'display:none;' : ''; ?>">
+                <?php if (!$hayActividadesCompletadas): ?>
                 <button id="btnIniciar" class="btn btn-success" onclick="iniciarTimer()">Iniciar</button>
+                <?php endif; ?>
                 <button id="btnPausar" class="btn btn-warning" onclick="pausarTimer()" style="display:none;">Pausar</button>
+                <?php if (!$esUltimaActividad): ?>
                 <button id="btnSiguiente" class="btn btn-primary" onclick="siguienteActividad()">Siguiente actividad</button>
+                <?php endif; ?>
                 <button id="btnFinalizar" class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
             </div>
             
             <!-- Botones específicos para Repertorio -->
             <div class="timer-controls" id="controlesRepertorio" style="<?php echo $actividadActual['tipo'] !== 'repertorio' ? 'display:none;' : ''; ?>">
+                <?php if (!$hayActividadesCompletadas): ?>
                 <button id="btnIniciarRep" class="btn btn-success" onclick="iniciarTimer()">Iniciar</button>
+                <?php endif; ?>
                 <button id="btnPausarRep" class="btn btn-warning" onclick="pausarTimer()" style="display:none;">Pausar</button>
                 <button id="btnCompletarPieza" class="btn btn-primary" onclick="completarPieza()">✓ Pieza completada - Siguiente</button>
+                <?php if (!$esUltimaActividad): ?>
                 <button id="btnTerminarRepertorio" class="btn btn-warning" onclick="terminarRepertorio()">Terminar Repertorio</button>
+                <?php endif; ?>
                 <button id="btnFinalizarRep" class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
             </div>
             
@@ -293,6 +491,7 @@ include 'includes/header.php';
         <input type="hidden" id="actividadId" value="<?php echo $actividadActual['id']; ?>">
         <input type="hidden" id="piezaId" value="<?php echo $actividadActual['pieza_id'] ?? ''; ?>">
         <input type="hidden" id="tiempoInicial" value="<?php echo $actividadActual['tiempo_segundos']; ?>">
+        <input type="hidden" id="esUltimaActividad" value="<?php echo $esUltimaActividad ? '1' : '0'; ?>">
         <?php else: ?>
         <div class="alert alert-success">
             <strong>¡Sesión completada!</strong> Todas las actividades han sido finalizadas.
@@ -309,7 +508,11 @@ include 'includes/header.php';
                 <div class="actividad-info">
                     <strong><?php echo getNombreActividad($act['tipo']); ?></strong>
                     <?php if ($act['compositor']): ?>
-                    <small><?php echo htmlspecialchars($act['compositor'] . ' - ' . $act['titulo']); ?></small>
+                    <small><?php echo htmlspecialchars($act['compositor'] . ' - ' . $act['titulo']); ?>
+                    <?php if ($act['tempo']): ?>
+                    (♩ = <?php echo $act['tempo']; ?>)
+                    <?php endif; ?>
+                    </small>
                     <?php endif; ?>
                     <?php if ($act['notas']): ?>
                     <small><?php echo nl2br(htmlspecialchars($act['notas'])); ?></small>
@@ -355,10 +558,33 @@ include 'includes/header.php';
     <div class="card">
         <h2>Planificar nueva sesión</h2>
         
+        <?php if ($ultimaSesion): ?>
+        <div class="alert alert-info" style="margin-bottom: 1rem;">
+            ℹ️ <strong>Configuración precargada</strong> de la última sesión (<?php echo date('d/m/Y', strtotime($ultimaSesion['fecha'])); ?>). 
+            Puedes modificar, añadir o eliminar actividades antes de iniciar.
+        </div>
+        <?php endif; ?>
+        
         <form method="POST" id="formPlanificacion">
             <input type="hidden" name="crear_sesion" value="1">
             
-            <div id="actividadesContainer"></div>
+            <div id="actividadesContainer">
+                <?php if (!empty($ultimasActividades)): ?>
+                    <?php foreach ($ultimasActividades as $index => $act): ?>
+                    <div class="actividad-item">
+                        <div class="actividad-info">
+                            <strong><?php echo getNombreActividad($act['tipo']); ?></strong>
+                            <?php if ($act['notas']): ?>
+                            <small><?php echo htmlspecialchars($act['notas']); ?></small>
+                            <?php endif; ?>
+                            <input type="hidden" name="actividades[<?php echo $index; ?>][tipo]" value="<?php echo $act['tipo']; ?>">
+                            <input type="hidden" name="actividades[<?php echo $index; ?>][notas]" value="<?php echo htmlspecialchars($act['notas']); ?>">
+                        </div>
+                        <button type="button" class="btn btn-danger btn-small" onclick="this.parentElement.remove()">Eliminar</button>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
             
             <div class="form-inline">
                 <div class="form-group">
@@ -373,8 +599,8 @@ include 'includes/header.php';
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="notasActividad">Notas (opcional)</label>
-                    <input type="text" id="notasActividad" placeholder="Ej: Escalas en Do Mayor">
+                    <label for="notasActividadNueva">Notas (opcional)</label>
+                    <input type="text" id="notasActividadNueva" placeholder="Ej: Escalas en Do Mayor">
                 </div>
                 <div class="form-group">
                     <button type="button" class="btn btn-primary" onclick="agregarActividad()">Añadir</button>
@@ -390,11 +616,11 @@ include 'includes/header.php';
 <?php endif; ?>
 
 <script>
-let actividadesCount = 0;
+let actividadesCount = <?php echo !empty($ultimasActividades) ? count($ultimasActividades) : 0; ?>;
 
 function agregarActividad() {
     const tipo = document.getElementById('tipoActividad').value;
-    const notas = document.getElementById('notasActividad').value;
+    const notas = document.getElementById('notasActividadNueva').value;
     const tipoNombre = document.getElementById('tipoActividad').options[document.getElementById('tipoActividad').selectedIndex].text;
     
     const container = document.getElementById('actividadesContainer');
@@ -413,49 +639,8 @@ function agregarActividad() {
     container.appendChild(div);
     actividadesCount++;
     
-    document.getElementById('notasActividad').value = '';
+    document.getElementById('notasActividadNueva').value = '';
 }
-
-<?php if (!$sesion && !empty($actividadesPlantilla)): ?>
-// Pre-rellenar actividades de la última sesión
-document.addEventListener('DOMContentLoaded', function() {
-    const actividadesPlantilla = <?php echo json_encode($actividadesPlantilla); ?>;
-    const tiposNombres = {
-        'calentamiento': 'Calentamiento',
-        'tecnica': 'Técnica',
-        'practica': 'Práctica',
-        'repertorio': 'Repertorio',
-        'improvisacion': 'Improvisación',
-        'composicion': 'Composición'
-    };
-    
-    const container = document.getElementById('actividadesContainer');
-    
-    actividadesPlantilla.forEach(function(act, index) {
-        const div = document.createElement('div');
-        div.className = 'actividad-item';
-        div.innerHTML = `
-            <div class="actividad-info" style="flex: 1;">
-                <strong>${tiposNombres[act.tipo]}</strong>
-                <div style="margin-top: 0.5rem;">
-                    <input type="text" 
-                           id="notas_${index}" 
-                           value="${act.notas || ''}" 
-                           placeholder="Editar notas..."
-                           style="width: 100%; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;"
-                           oninput="document.getElementById('notas_hidden_${index}').value = this.value">
-                </div>
-                <input type="hidden" id="notas_hidden_${index}" name="actividades[${index}][notas]" value="${act.notas || ''}">
-                <input type="hidden" name="actividades[${index}][tipo]" value="${act.tipo}">
-            </div>
-            <button type="button" class="btn btn-danger btn-small" onclick="this.parentElement.remove()">Eliminar</button>
-        `;
-        container.appendChild(div);
-    });
-    
-    actividadesCount = actividadesPlantilla.length;
-});
-<?php endif; ?>
 
 // Timer JavaScript
 let timerInterval = null;
@@ -479,6 +664,13 @@ if (document.getElementById('piezasTocadas')) {
     document.getElementById('piezasTocadas').textContent = 'Piezas completadas: ' + piezasCompletadas;
 }
 
+// AUTO-INICIO: Si hay actividades completadas, iniciar automáticamente esta actividad
+<?php if ($hayActividadesCompletadas): ?>
+setTimeout(function() {
+    iniciarTimer();
+}, 500);
+<?php endif; ?>
+
 function iniciarTimer() {
     if (timerActivo) return;
     
@@ -489,9 +681,12 @@ function iniciarTimer() {
     if (btnPausar) btnPausar.style.display = 'inline-block';
     
     // Marcar actividad como en curso
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'iniciar',
             actividad_id: document.getElementById('actividadId').value
@@ -523,9 +718,12 @@ function pausarTimer() {
 }
 
 function guardarTiempo() {
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'guardar',
             actividad_id: document.getElementById('actividadId').value,
@@ -538,9 +736,12 @@ function guardarNotas() {
     const notas = document.getElementById('notasActividad').value;
     const actividadId = document.getElementById('actividadId').value;
     
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'guardar_notas',
             actividad_id: actividadId,
@@ -550,12 +751,10 @@ function guardarNotas() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Actualizar display de notas actuales
             const notasDisplay = document.getElementById('notasActuales');
             if (notasDisplay) {
                 notasDisplay.textContent = notas;
             } else if (notas) {
-                // Crear elemento de display si no existía
                 const infoActividad = document.getElementById('infoActividad');
                 const br = document.createElement('br');
                 const small = document.createElement('small');
@@ -564,13 +763,7 @@ function guardarNotas() {
                 infoActividad.appendChild(br);
                 infoActividad.appendChild(small);
             }
-            // Mostrar confirmación breve
-            const input = document.getElementById('notasActividad');
-            const originalBorder = input.style.border;
-            input.style.border = '2px solid #27ae60';
-            setTimeout(() => {
-                input.style.border = originalBorder;
-            }, 500);
+            alert('✓ Notas guardadas correctamente');
         } else {
             alert('Error al guardar notas');
         }
@@ -580,26 +773,6 @@ function guardarNotas() {
         alert('Error al guardar notas');
     });
 }
-
-// Auto-guardar notas cada 3 segundos si han cambiado
-let notasTimer = null;
-let ultimasNotasGuardadas = '';
-document.addEventListener('DOMContentLoaded', function() {
-    const inputNotas = document.getElementById('notasActividad');
-    if (inputNotas) {
-        ultimasNotasGuardadas = inputNotas.value;
-        inputNotas.addEventListener('input', function() {
-            clearTimeout(notasTimer);
-            notasTimer = setTimeout(function() {
-                const notasActuales = inputNotas.value;
-                if (notasActuales !== ultimasNotasGuardadas) {
-                    guardarNotas();
-                    ultimasNotasGuardadas = notasActuales;
-                }
-            }, 3000); // 3 segundos después de dejar de escribir
-        });
-    }
-});
 
 function completarPieza() {
     const fallos = document.getElementById('fallos')?.value || 0;
@@ -614,12 +787,14 @@ function completarPieza() {
         return;
     }
     
-    // Guardar tiempo actual
     guardarTiempo();
     
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'completar_pieza',
             actividad_id: document.getElementById('actividadId').value,
@@ -631,21 +806,21 @@ function completarPieza() {
     .then(response => response.json())
     .then(data => {
         if (data.success && data.siguiente_pieza) {
-            // Actualizar interfaz con la nueva pieza
             document.getElementById('piezaId').value = data.siguiente_pieza.id;
-            let tempoHtml = '';
+            
+            // Construir el texto con tempo si existe
+            let textoInfo = '<br><small>' + data.siguiente_pieza.compositor + ' - ' + data.siguiente_pieza.titulo;
             if (data.siguiente_pieza.tempo) {
-                tempoHtml = '<br><small style="color: #f39c12; font-weight: bold;">♩ = ' + data.siguiente_pieza.tempo + ' BPM</small>';
+                textoInfo += ' (♩ = ' + data.siguiente_pieza.tempo + ')';
             }
-            document.getElementById('piezaActualInfo').innerHTML = 
-                '<br><small>' + data.siguiente_pieza.compositor + ' - ' + data.siguiente_pieza.titulo + '</small>' + tempoHtml;
+            textoInfo += '</small>';
+            
+            document.getElementById('piezaActualInfo').innerHTML = textoInfo;
             document.getElementById('fallos').value = 0;
             
-            // Actualizar contador
             piezasCompletadas++;
             document.getElementById('piezasTocadas').textContent = 'Piezas completadas: ' + piezasCompletadas;
             
-            // Notificar al usuario
             const info = document.getElementById('infoActividad');
             const originalBg = info.parentElement.style.background;
             info.parentElement.style.background = 'linear-gradient(135deg, #27ae60, #229954)';
@@ -654,6 +829,10 @@ function completarPieza() {
             }, 1000);
             
         } else if (data.success && !data.siguiente_pieza) {
+            // No hay más piezas - limpiar piezaId para evitar duplicación
+            document.getElementById('piezaId').value = '';
+            document.getElementById('fallos').value = 0;
+            
             alert('¡Felicidades! Has completado todas las piezas disponibles en tu repertorio para esta sesión.');
             terminarRepertorio();
         } else {
@@ -673,14 +852,16 @@ function terminarRepertorio() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
-    // Pausar timer si está activo
     if (timerActivo) {
         pausarTimer();
     }
     
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'terminar_repertorio',
             actividad_id: document.getElementById('actividadId').value,
@@ -692,7 +873,16 @@ function terminarRepertorio() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            location.reload();
+            if (data.hay_siguiente) {
+                location.reload();
+            } else {
+                // Era la última actividad, limpiar campos y finalizar sesión automáticamente
+                // IMPORTANTE: Limpiar piezaId y fallos ANTES de finalizar para evitar duplicación
+                // La pieza ya fue registrada por terminar_repertorio, no debe volver a registrarse
+                document.getElementById('piezaId').value = '';
+                document.getElementById('fallos').value = 0;
+                finalizarSesionInterno(true);
+            }
         } else {
             alert('Error al finalizar repertorio: ' + (data.error || 'Desconocido'));
         }
@@ -700,6 +890,10 @@ function terminarRepertorio() {
 }
 
 function siguienteActividad() {
+    if (!confirm('¿Pasar a la siguiente actividad? Se guardará el progreso actual.')) {
+        return;
+    }
+    
     if (timerActivo) {
         pausarTimer();
     }
@@ -707,9 +901,12 @@ function siguienteActividad() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'siguiente',
             actividad_id: document.getElementById('actividadId').value,
@@ -721,7 +918,17 @@ function siguienteActividad() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            location.reload();
+            if (data.hay_siguiente) {
+                location.reload();
+            } else {
+                // Era la última actividad, limpiar campos y finalizar sesión automáticamente
+                // IMPORTANTE: La pieza ya fue registrada por 'siguiente', limpiar para evitar duplicación
+                document.getElementById('piezaId').value = '';
+                if (document.getElementById('fallos')) {
+                    document.getElementById('fallos').value = 0;
+                }
+                finalizarSesionInterno(true);
+            }
         } else {
             alert('Error al avanzar: ' + (data.error || 'Desconocido'));
         }
@@ -732,7 +939,10 @@ function finalizarSesion() {
     if (!confirm('¿Finalizar la sesión? Esto guardará todo el progreso.')) {
         return;
     }
-    
+    finalizarSesionInterno(false);
+}
+
+function finalizarSesionInterno(autoFinalizado) {
     if (timerActivo) {
         pausarTimer();
     }
@@ -740,9 +950,12 @@ function finalizarSesion() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
-    fetch('ajax/timer.php', {
+    fetch('sesion.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({
             accion: 'finalizar',
             sesion_id: document.getElementById('sesionId').value,
@@ -755,6 +968,9 @@ function finalizarSesion() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            if (autoFinalizado) {
+                alert('✓ ¡Sesión completada automáticamente! Has terminado todas las actividades.');
+            }
             location.reload();
         } else {
             alert('Error al finalizar: ' + (data.error || 'Desconocido'));
@@ -772,31 +988,6 @@ function actualizarDisplay() {
         String(minutos).padStart(2, '0') + ':' + 
         String(segundos).padStart(2, '0');
 }
-
-// Auto-finalizar sesión al salir de la página sin finalizar
-window.addEventListener('beforeunload', function(e) {
-    // Solo auto-finalizar si hay una sesión activa
-    const sesionId = document.getElementById('sesionId')?.value;
-    const actividadId = document.getElementById('actividadId')?.value;
-    
-    if (!sesionId) return; // No hay sesión activa
-    
-    // Pausar timer si está activo
-    if (timerActivo) {
-        clearInterval(timerInterval);
-    }
-    
-    // Enviar petición síncrona para auto-finalizar (debe ser síncrona en beforeunload)
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/piano/ajax/timer.php', false); // false = síncrono
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send(JSON.stringify({
-        accion: 'auto_finalizar',
-        sesion_id: sesionId,
-        actividad_id: actividadId,
-        tiempo: tiempoActual
-    }));
-});
 <?php endif; ?>
 </script>
 

@@ -226,16 +226,6 @@ if (isset($_GET['editar'])) {
             ");
             $stmt->execute([':act_id' => $act['id']]);
             $act['fallos_piezas'] = $stmt->fetchAll();
-            
-            // Para compatibilidad con el formulario existente, si solo hay una pieza, usar formato antiguo
-            if (count($act['fallos_piezas']) == 1) {
-                $act['pieza_id'] = $act['fallos_piezas'][0]['pieza_id'];
-                $act['fallos'] = $act['fallos_piezas'][0]['cantidad'];
-                $act['compositor'] = $act['fallos_piezas'][0]['compositor'];
-                $act['titulo'] = $act['fallos_piezas'][0]['titulo'];
-            } elseif (empty($act['fallos_piezas'])) {
-                $act['fallos'] = 0;
-            }
         }
         unset($act);
         
@@ -376,18 +366,19 @@ include 'includes/header.php';
                                     <button type="button" class="btn btn-danger btn-small" onclick="eliminarPieza(this)">✕</button>
                                 </div>
                                 <?php endforeach; ?>
-                            <?php elseif ($act['pieza_id']): ?>
+                            <?php else: ?>
+                                <!-- Si no hay piezas, mostrar campo vacío para añadir -->
                                 <div class="pieza-entry">
                                     <select name="actividades[<?php echo $index; ?>][piezas][0][pieza_id]" required>
                                         <option value="">Seleccionar pieza...</option>
                                         <?php foreach ($piezas as $p): ?>
-                                        <option value="<?php echo $p['id']; ?>" <?php echo ($act['pieza_id'] == $p['id']) ? 'selected' : ''; ?>>
+                                        <option value="<?php echo $p['id']; ?>">
                                             <?php echo htmlspecialchars($p['compositor'] . ' - ' . $p['titulo']); ?>
                                         </option>
                                         <?php endforeach; ?>
                                     </select>
                                     <input type="number" name="actividades[<?php echo $index; ?>][piezas][0][fallos]" 
-                                           min="0" value="<?php echo $act['fallos'] ?? 0; ?>" placeholder="Fallos" style="width: 100px;">
+                                           min="0" value="0" placeholder="Fallos" style="width: 100px;">
                                     <button type="button" class="btn btn-danger btn-small" onclick="eliminarPieza(this)">✕</button>
                                 </div>
                             <?php endif; ?>
@@ -475,7 +466,7 @@ include 'includes/header.php';
             <tbody>
                 <?php foreach ($sesiones as $sesion): ?>
                 <tr>
-                    <td><?php echo date('d/m/Y', strtotime($sesion['fecha'])); ?></td>
+                    <td data-order="<?php echo $sesion['fecha']; ?>"><?php echo date('d/m/Y', strtotime($sesion['fecha'])); ?></td>
                     <td style="text-align: center;"><?php echo $sesion['num_actividades']; ?></td>
                     <td><?php echo formatearTiempo($sesion['tiempo_total']); ?></td>
                     <td style="white-space: nowrap;">
@@ -657,7 +648,7 @@ $(document).ready(function() {
         },
         "pageLength": 10,
         "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Todas"]],
-        "order": [[0, "desc"]],  // Ordenar por fecha descendente (más reciente primero)
+        "order": [[0, "desc"]],  // Ordenar por fecha descendente usando data-order
         "columnDefs": [
             { "orderable": false, "targets": -1 }  // Desactivar ordenamiento en columna Acciones
         ]

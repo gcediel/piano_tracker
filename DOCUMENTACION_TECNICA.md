@@ -1,9 +1,9 @@
-# Piano Tracker - Documentación Técnica v1.9.0
+# Piano Tracker - Documentación Técnica v1.5+
 
 **Aplicación web para gestión de práctica de piano**  
 **Autor:** Guillermo  
-**Fecha:** 30 Enero 2025  
-**Versión:** 1.9.0  
+**Fecha:** 09 Febrero 2025  
+**Versión:** 1.5+  
 **Stack:** PHP 8.x + MySQL 8.x + Vanilla JavaScript
 
 ---
@@ -35,13 +35,13 @@ Piano Tracker es una aplicación web para pianistas que permite:
 ### Características principales
 
 - **Gestión de repertorio:** Alta, edición y eliminación de piezas con metadatos (compositor, título, grado, tempo, ponderación)
-- **Sesiones de práctica:** Sistema de actividades con cronómetro integrado y auto-finalización
+- **Sesiones de práctica:** Sistema de actividades con cronómetro integrado y flujo automático
 - **Seguimiento de fallos:** Registro de errores por pieza con cálculo de medias
 - **Algoritmo de sugerencia:** Sistema inteligente que prioriza piezas según fallos recientes y ponderación
-- **Dashboard unificado:** Estadísticas completas de tiempo, días practicados y rachas
-- **Informes mensuales:** Tablas detalladas con gráficos de tarta de distribución de actividades y rendimiento
-- **Informes anuales:** Vista completa de 12 meses con análisis comparativo y gráficos visuales
+- **Informes visuales:** Estadísticas con DataTables, gráficos y análisis temporal
 - **Gestión administrativa:** Creación manual de sesiones históricas
+- **Precarga inteligente:** Reutiliza la configuración de la última sesión
+- **Flujo optimizado:** Transiciones automáticas entre actividades sin interrupciones manuales
 
 ---
 
@@ -127,19 +127,17 @@ piano_tracker/
 ├── includes/
 │   ├── header.php            # Cabecera HTML + navegación
 │   └── footer.php            # Pie de página HTML
-├── ajax/
-│   └── timer.php             # Handler AJAX para cronómetro
 ├── assets/
-│   └── css/
-│       └── style.css         # Estilos globales
+│   ├── css/
+│   │   └── style.css         # Estilos globales
+│   └── js/
+│       └── app.js            # JavaScript auxiliar
 ├── database/
 │   └── schema.sql            # Esquema completo de la base de datos
 ├── index.php                 # Página de inicio (dashboard)
 ├── repertorio.php            # Gestión de piezas del repertorio
-├── sesion.php                # Sesiones de práctica
+├── sesion.php                # Sesiones de práctica (con AJAX integrado)
 ├── informes.php              # Estadísticas y reportes
-├── informe_mensual.php       # Informe mensual detallado (PDF)
-├── informe_anual.php         # Informe anual detallado (PDF)
 ├── admin.php                 # Panel de administración
 ├── gestionar_sesiones.php    # CRUD de sesiones manuales
 └── DOCUMENTACION_TECNICA.md  # Este archivo
@@ -170,6 +168,7 @@ CREATE TABLE piezas (
 ```
 
 **Campos importantes:**
+- `tempo`: Velocidad de la pieza (se muestra como ♩ = X durante la práctica)
 - `ponderacion`: Factor de importancia (1.0-2.0). Piezas con mayor ponderación tienen más prioridad en el algoritmo de sugerencia.
 - `activa`: Booleano para ocultar/mostrar piezas sin eliminarlas.
 
@@ -253,46 +252,19 @@ actividades (1) ──→ (N) fallos
 
 ### 1. Inicio (`index.php`)
 
-**Propósito:** Dashboard principal unificado con estadísticas completas de práctica.
+**Propósito:** Dashboard principal con resumen de actividad.
 
 **Funcionalidades:**
-- **Estadísticas de Tiempo:**
-  - Tiempo practicado: hoy, esta semana, este mes, este año
-- **Estadísticas de Días:**
-  - Días practicados con porcentajes: semana (X/Y - Z%), mes (X/Y - Z%), año (X días - Z%)
-  - Número de piezas activas en repertorio
-- **Rachas de Práctica:**
-  - Racha actual: excluye día actual si no hay actividad registrada
-  - Racha más larga histórica
-- **Últimas 5 sesiones:** Con tiempo total y media de fallos del repertorio
-- **Enlace rápido:** A sesión en curso si existe
-- **Auto-corrección:** Marca como finalizadas las sesiones con todas las actividades completadas
-
-**Lógica de racha mejorada:**
-```php
-// Verificar si hay actividad hoy
-$stmt = $db->query("SELECT COUNT(*) as count FROM sesiones WHERE fecha = CURDATE()");
-$hayActividadHoy = $stmt->fetch()['count'] > 0;
-
-// Si no hay actividad hoy, empezar desde ayer
-$fechaCheck = clone $hoy;
-if (!$hayActividadHoy) {
-    $fechaCheck->modify('-1 day');
-}
-```
+- Muestra tiempo practicado hoy, este mes
+- Número de piezas activas en repertorio
+- Racha actual y más larga de práctica consecutiva
+- Porcentaje de días practicados (semana, mes, año)
+- Últimas 5 sesiones con media de fallos del repertorio
+- Enlace rápido a sesión en curso (si existe)
+- Auto-corrección de sesiones (marca como finalizadas las que tienen todas las actividades completadas)
 
 **Consultas SQL principales:**
 ```sql
--- Tiempo esta semana
-SELECT SUM(tiempo_segundos) as total FROM actividades a 
-JOIN sesiones s ON a.sesion_id = s.id 
-WHERE YEARWEEK(s.fecha, 1) = YEARWEEK(CURDATE(), 1)
-
--- Tiempo este año
-SELECT SUM(tiempo_segundos) as total FROM actividades a 
-JOIN sesiones s ON a.sesion_id = s.id 
-WHERE YEAR(s.fecha) = YEAR(CURDATE())
-
 -- Auto-corrección de sesiones
 UPDATE sesiones s 
 SET s.estado = 'finalizada' 
@@ -302,6 +274,18 @@ AND NOT EXISTS (
     WHERE a.sesion_id = s.id 
     AND a.estado IN ('pendiente', 'en_curso')
 )
+
+-- Últimas sesiones con media de fallos
+SELECT s.*, 
+    (SELECT SUM(tiempo_segundos) FROM actividades WHERE sesion_id = s.id) as tiempo_total,
+    (SELECT ROUND(AVG(f.cantidad), 2)
+     FROM fallos f 
+     JOIN actividades a ON f.actividad_id = a.id 
+     WHERE a.sesion_id = s.id 
+     AND a.tipo = 'repertorio') as media_fallos_repertorio
+FROM sesiones s 
+ORDER BY fecha DESC, id DESC 
+LIMIT 5
 ```
 
 ---
@@ -312,7 +296,7 @@ AND NOT EXISTS (
 
 **Funcionalidades:**
 - **CRUD de piezas:**
-  - Crear nueva pieza con metadatos
+  - Crear nueva pieza con metadatos (compositor, título, libro, grado, tempo, ponderación)
   - Editar pieza existente
   - Desactivar pieza (ocultar sin eliminar)
   - Eliminar pieza (solo si no tiene registros de práctica)
@@ -337,130 +321,78 @@ WHERE f.fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
 GROUP BY p.id
 ```
 
-**Códigos de color por media (adaptado para daltonismo):**
-- 🔵 Azul oscuro (#2E5F8A) - 0 fallos o < 0.5: Perfección
-- 🔵 Azul medio (#4A7BA7) - 0.5-1.5: Excelente  
-- 🔵 Azul claro (#A3C1DA) - 1.5-2.5: Muy bien
-- 🟢 Verde amarillento (#D4E89E) - 2.5-3.5: Bien
-- ⚫ Gris (#9B9B9B) - 3.5-5: Mejorable
-- 🔴 Rojo (#E57373) - > 5: Atención
-
-**Nota:** Sistema de 6 niveles diseñado para ser distinguible por personas con daltonismo. Los colores se aplican como fondo de celda con texto blanco o negro según el contraste necesario.
+**Códigos de color por media:**
+- 🟢 Verde (< 0.5): Perfección
+- 🔵 Azul (0.5-1.5): Excelente
+- 🟡 Amarillo (1.5-2.5): Muy bien
+- 🟠 Naranja (2.5-3.5): Bien
+- 🟣 Morado (3.5-5): Mejorable
+- 🔴 Rojo (> 5): Atención
 
 ---
 
 ### 3. Sesión (`sesion.php`)
 
-**Propósito:** Gestión de sesiones de práctica con cronómetro en tiempo real.
+**Propósito:** Gestión de sesiones de práctica con cronómetro en tiempo real y flujo automático.
 
 **Funcionalidades:**
 
 #### 3.1 Crear sesión
+- **Precarga automática:** Al entrar, se carga automáticamente la configuración de la última sesión (tipos de actividades y notas)
 - **Modo 1:** Planificar sesión para más tarde
 - **Modo 2:** Iniciar sesión inmediatamente
 - Configurar actividades (tipos + duración estimada)
 - Para actividades de repertorio: sistema de sugerencia automática
+- Permite modificar, añadir o eliminar actividades antes de iniciar
 
-#### 3.2 Ejecutar sesión
-- **Cronómetro en tiempo real** con JavaScript + AJAX
+#### 3.2 Ejecutar sesión con flujo automático
+- **Cronómetro en tiempo real** con JavaScript + AJAX integrado (sin archivo externo)
+- **Auto-inicio inteligente:**
+  - Primera actividad: Requiere pulsar "Iniciar" manualmente
+  - Actividades intermedias: Se inician automáticamente al completar la anterior
+  - Última actividad: Se inicia automáticamente al completar la anterior
+- **Botones contextuales:**
+  - "Iniciar": Solo visible en la primera actividad
+  - "Pausar/Reanudar": Siempre disponible durante ejecución
+  - "Siguiente actividad": Solo visible si NO es la última actividad
+  - "Completar pieza" (repertorio): Registra fallos y carga siguiente pieza
+  - "Terminar Repertorio": Solo visible si NO es la última actividad
+  - "Finalizar sesión": Siempre visible
+- **Auto-finalización:** Al completar la última actividad, la sesión se finaliza automáticamente con mensaje de confirmación
+- **Confirmaciones:** Todos los botones críticos tienen diálogos de confirmación
+- **Visualización de tempo:** Muestra el tempo (♩ = X) junto al nombre de cada pieza de repertorio
 - Control de inicio/pausa/reanudar/completar por actividad
 - Registro de fallos al completar actividad de repertorio
-- Añadir notas por actividad
+- Añadir y guardar notas por actividad en tiempo real
 - Barra de progreso visual
-- **Auto-finalización inteligente:**
-  - Al completar última actividad con "Terminar Repertorio"
-  - Al salir de la página (beforeunload event)
 
 #### 3.3 Ver detalles de sesión
 - Resumen completo de sesión finalizada
-- Lista de actividades con tiempos y fallos
+- Lista de actividades con tiempos, fallos y tempo de piezas
 - Estadísticas agregadas
 
-#### 3.4 Auto-finalización de sesiones
-
-**Sistema de auto-finalización (v1.9.0):**
-
-1. **Al terminar repertorio como última actividad:**
-```php
-// ajax/timer.php - caso 'terminar_repertorio'
-$stmt = $db->prepare("SELECT id FROM actividades 
-                      WHERE sesion_id = :sesion_id 
-                      AND estado = 'pendiente' 
-                      ORDER BY orden LIMIT 1");
-$siguiente = $stmt->fetch();
-
-if (!$siguiente) {
-    // No hay más actividades pendientes - finalizar sesión
-    $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada' WHERE id = :id");
-    $stmt->execute([':id' => $sesionId]);
-}
+**Flujo de ejecución mejorado:**
 ```
-
-2. **Al salir de la página (Ctrl+W, cerrar pestaña, navegar):**
-```javascript
-// sesion.php - beforeunload listener
-window.addEventListener('beforeunload', function(e) {
-    if (!sesionId) return;
-    
-    // Usar XHR síncrono para garantizar envío antes de cerrar
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/piano/ajax/timer.php', false);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send(JSON.stringify({
-        accion: 'auto_finalizar',
-        sesion_id: sesionId,
-        actividad_id: actividadId,
-        tiempo: tiempoActual
-    }));
-});
-```
-
-3. **Handler AJAX auto_finalizar:**
-```php
-// ajax/timer.php
-case 'auto_finalizar':
-    // Guardar tiempo de actividad actual
-    UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id
-    
-    // Completar actividad en curso
-    UPDATE actividades SET estado = 'completada', fecha_fin = NOW() 
-    WHERE id = :id AND estado = 'en_curso'
-    
-    // Completar todas las pendientes
-    UPDATE actividades SET estado = 'completada' 
-    WHERE sesion_id = :sesion_id AND estado = 'pendiente'
-    
-    // Finalizar sesión
-    UPDATE sesiones SET estado = 'finalizada' WHERE id = :id
-```
-
-**Beneficios:**
-- ✅ No quedan sesiones "en_curso" huérfanas
-- ✅ El tiempo se guarda correctamente
-- ✅ Mejor experiencia de usuario (no hace falta finalizar manualmente)
-
-**Flujo de ejecución:**
-```
-1. Usuario crea sesión → estado='planificada'
+1. Usuario crea sesión → estado='planificada' (con config de última sesión precargada)
 2. Usuario inicia sesión → estado='en_curso'
-3. Usuario inicia actividad → actividad.estado='en_curso', fecha_inicio=NOW()
-4. Cronómetro corre (actualización cada segundo vía AJAX)
-5. Usuario completa actividad → actividad.estado='completada', fecha_fin=NOW()
-6. Si tipo='repertorio': registrar fallos en tabla fallos
-7. Cuando todas actividades completadas → sesion.estado='finalizada'
+3. Primera actividad:
+   - Usuario debe pulsar "Iniciar" manualmente
+   - Cronómetro inicia (actualización cada segundo vía AJAX)
+4. Al completar actividad:
+   - actividad.estado='completada', fecha_fin=NOW()
+   - Si tipo='repertorio': registrar fallos en tabla fallos
+   - Si hay siguiente actividad: cargarla e iniciar automáticamente
+   - Si es la última: finalizar sesión automáticamente con confirmación
+5. Botones visibles según contexto:
+   - "Siguiente actividad": Solo si NO es última actividad
+   - "Terminar Repertorio": Solo si NO es última actividad
+   - "Finalizar sesión": Siempre disponible
 ```
 
-**AJAX para cronómetro:**
-```javascript
-// sesion.php contiene código JavaScript
-setInterval(function() {
-    fetch('sesion.php?accion=actualizar_tiempo&actividad_id=' + actividadId)
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('tiempo').textContent = formatearTiempo(data.tiempo);
-        });
-}, 1000);
-```
+**AJAX integrado:**
+- Todas las peticiones AJAX se procesan en el mismo `sesion.php`
+- Detección mediante header `X-Requested-With: XMLHttpRequest`
+- Acciones disponibles: iniciar, pausar, guardar, guardar_notas, completar_pieza, terminar_repertorio, siguiente, finalizar
 
 **Limpieza de sesiones programadas:**
 Al crear nueva sesión, elimina sesiones programadas pendientes del día:
@@ -474,160 +406,46 @@ AND fecha = CURDATE()
 
 ### 4. Informes (`informes.php`)
 
-**Propósito:** Página principal de análisis estadístico con enlaces a informes detallados.
+**Propósito:** Análisis estadístico de la práctica.
 
 **Funcionalidades:**
 - **Filtros de periodo:** Día, semana, mes, año
 - **Tiempo por actividad:** Gráfico de distribución
-- **Práctica de piezas del repertorio:** Tabla con días practicados y media de fallos
-- **Práctica diaria:** Tabla con tiempo por tipo de actividad por día
-- **Enlaces a informes detallados:**
-  - 📄 Informes mensuales detallados (con gráficos)
-  - 📅 Informes anuales detallados (con gráficos)
+- **Práctica de piezas del repertorio:**
+  - Tabla con días practicados y media de fallos
+  - DataTables con búsqueda
+- **Práctica diaria:**
+  - Tabla con tiempo por tipo de actividad por día
+  - Columna de media de fallos del repertorio
+  - DataTables
 
----
-
-### 5. Informe Mensual Detallado (`informe_mensual.php`)
-
-**Propósito:** Informe completo mensual con visualizaciones gráficas para impresión/PDF.
-
-**Funcionalidades:**
-
-#### 5.1 Selector de periodo
-- Selector de mes y año (grande y legible)
-- Botón "Generar informe"
-- Botón "Imprimir / Guardar PDF"
-- Botón "Volver a Informes"
-
-#### 5.2 Tabla 1: Tiempo de práctica por tipo de actividad
-- Columnas: Actividad | Días 1-31 | Días practicados | Total | %
-- Formato horizontal con scroll
-- Colores de fondo para facilitar lectura
-- Tiempo en formato breve: "H:MM" o "M'"
-
-#### 5.3 Gráfico 1: Distribución de Tiempo por Actividad
-- **Gráfico de tarta (donut)** 300x300px
-- Colores distintivos por actividad:
-  - 🔴 Calentamiento: #FF6B6B
-  - 🟢 Técnica: #4ECDC4
-  - 🔵 Práctica: #45B7D1
-  - 🟠 Repertorio: #FFA07A
-  - 🟣 Improvisación: #98D8C8
-  - 🟡 Composición: #C7CEEA
-- Leyenda con tiempo y porcentaje
-- Total en el centro del donut
-
-#### 5.4 Tabla 2: Piezas de Repertorio
-- Columnas: Libro | Gr | Compositor | Nombre | Tempo | Instr | **Pond** | Días 1-31 | Días | Media
-- Columna **Ponderación** añadida
-- Celdas con código de colores según media de fallos
-- Color de fila según media mensual
-- Solo muestra piezas practicadas en el mes
-
-#### 5.5 Gráfico 2: Distribución de Piezas por Rendimiento
-- **Gráfico de tarta (donut)** 300x300px
-- 6 categorías de rendimiento con paleta para daltonismo:
-  - 🔵 Excelente (< 0.5): #2E5F8A
-  - 🔷 Muy bien (0.5-1.5): #4A7BA7
-  - 🔹 Bien (1.5-2.5): #A3C1DA
-  - 🟢 Aceptable (2.5-3.5): #D4E89E
-  - ⚫ Mejorable (3.5-5): #9B9B9B
-  - 🔴 Atención (> 5): #E57373
-- Leyenda con cantidad y porcentaje
-- Total de piezas en el centro
-
-**Formato de salida:**
-- Orientación: Landscape (apaisada)
-- Optimizado para PDF con `print-color-adjust: exact`
-- Usuario debe activar "Gráficos de fondo" en opciones de impresión
-
----
-
-### 6. Informe Anual Detallado (`informe_anual.php`)
-
-**Propósito:** Informe completo anual con análisis de 12 meses para impresión/PDF.
-
-**Funcionalidades:**
-
-#### 6.1 Selector de periodo
-- Selector de año (grande y legible)
-- Botón "Generar informe"
-- Botón "Imprimir / Guardar PDF"
-- Botón "Volver a Informes"
-- Título visible con año y tiempo total
-
-#### 6.2 Tabla 1: Tiempo de práctica por tipo de actividad
-- Columnas: Actividad | Ene | Feb | Mar | ... | Dic | Días | Total | %
-- **12 columnas mensuales** con nombres abreviados
-- Cada celda muestra:
-  - Tiempo en formato breve
-  - Días practicados ese mes (texto pequeño)
-- Fila TOTAL al final
-
-#### 6.3 Gráfico 1: Distribución de Tiempo por Actividad
-- Idéntico al informe mensual
-- Datos del año completo
-- Mismos colores y formato
-
-#### 6.4 Tabla 2: Piezas de Repertorio
-- Columnas: Libro | Gr | Compositor | Nombre | Tempo | Instr | Pond | Ene | Feb | ... | Dic | Días | Media
-- **12 columnas mensuales** con medias de fallos/día de cada mes
-- Cada celda mensual:
-  - Muestra media de fallos/día de ese mes
-  - Color según el rendimiento de ese mes
-- Columna **Media**: media global del año
-- Color de fila según media anual
-- Solo muestra piezas practicadas en el año
-
-**Algoritmo de cálculo mensual:**
-```php
-foreach ($datosFallos as $dato) {
-    $mes = (int)$dato['mes'];
-    $piezaId = $dato['pieza_id'];
-    
-    if (!isset($piezas[$piezaId]['medias_por_mes'][$mes])) {
-        $piezas[$piezaId]['medias_por_mes'][$mes] = null;
-    }
-    
-    // Media = total_fallos_mes / días_practicados_mes
-    $media = $dato['total_fallos'] / $dato['dias_practicados'];
-    $piezas[$piezaId]['medias_por_mes'][$mes] = $media;
-}
-
-// Media anual
-$piezas[$piezaId]['media_fallos_anio'] = 
-    $piezas[$piezaId]['total_fallos_anio'] / 
-    $piezas[$piezaId]['dias_practicados_anio'];
-```
-
-#### 6.5 Gráfico 2: Distribución de Piezas por Rendimiento
-- Idéntico al informe mensual
-- Datos del año completo
-- Misma paleta de colores
-
-**Formato de salida:**
-- Orientación: Landscape (apaisada)
-- Optimizado para PDF
-- Tablas más compactas por mayor cantidad de columnas
-
-**Funciones auxiliares:**
-```php
-function getNombreMesCorto($numeroMes) {
-    return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-            'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][$numeroMes - 1];
-}
-
-function formatearTiempoBreve($segundos) {
-    if ($segundos == 0) return '-';
-    $horas = floor($segundos / 3600);
-    $minutos = floor(($segundos % 3600) / 60);
-    return $horas > 0 ? sprintf("%d:%02d", $horas, $minutos) : sprintf("%d'", $minutos);
-}
+**Consulta de práctica diaria:**
+```sql
+SELECT 
+    s.fecha,
+    s.id as sesion_id,
+    SUM(a.tiempo_segundos) as tiempo_total,
+    SUM(CASE WHEN a.tipo = 'calentamiento' THEN a.tiempo_segundos ELSE 0 END) as tiempo_calentamiento,
+    SUM(CASE WHEN a.tipo = 'tecnica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_tecnica,
+    SUM(CASE WHEN a.tipo = 'practica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_practica,
+    SUM(CASE WHEN a.tipo = 'repertorio' THEN a.tiempo_segundos ELSE 0 END) as tiempo_repertorio,
+    SUM(CASE WHEN a.tipo = 'improvisacion' THEN a.tiempo_segundos ELSE 0 END) as tiempo_improvisacion,
+    SUM(CASE WHEN a.tipo = 'composicion' THEN a.tiempo_segundos ELSE 0 END) as tiempo_composicion,
+    (SELECT ROUND(AVG(f.cantidad), 2)
+     FROM fallos f 
+     JOIN actividades a2 ON f.actividad_id = a2.id 
+     WHERE a2.sesion_id = s.id 
+     AND a2.tipo = 'repertorio') as media_fallos_repertorio
+FROM sesiones s
+LEFT JOIN actividades a ON s.id = a.sesion_id
+WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
+GROUP BY s.fecha, s.id
+ORDER BY s.fecha
 ```
 
 ---
 
-### 7. Admin (`admin.php`)
+### 5. Admin (`admin.php`)
 
 **Propósito:** Panel de administración.
 
@@ -635,10 +453,11 @@ function formatearTiempoBreve($segundos) {
 - Enlace a gestión de sesiones manuales
 - Exportación de datos (CSV/JSON)
 - Importación de datos
+- Cambio de contraseña
 
 ---
 
-### 8. Gestionar Sesiones (`gestionar_sesiones.php`)
+### 6. Gestionar Sesiones (`gestionar_sesiones.php`)
 
 **Propósito:** CRUD manual de sesiones históricas.
 
@@ -646,109 +465,17 @@ function formatearTiempoBreve($segundos) {
 - **Crear sesión manual:** Útil para registrar sesiones pasadas
   - Especificar fecha exacta
   - Añadir múltiples actividades
-  - Para actividades de repertorio: seleccionar pieza y registrar fallos
+  - Para actividades de repertorio: seleccionar múltiples piezas y registrar fallos
   - Especificar tiempo de cada actividad
 - **Editar sesión:** Modificar actividades y tiempos
 - **Eliminar sesión:** Borra sesión completa con todas sus actividades
 - **Tabla con DataTables:** Búsqueda y ordenamiento de sesiones
+- **Ordenación correcta:** Las sesiones se muestran por defecto ordenadas por fecha descendente (más recientes primero)
 
-**Importante:** Las sesiones creadas manualmente se marcan automáticamente como `estado='finalizada'`.
-
----
-
-### 7. Informe Mensual (`informe_mensual.php`)
-
-**Propósito:** Generar informe mensual detallado con tabla completa de práctica diaria por pieza.
-
-**Funcionalidades:**
-- **Tabla transpuesta** de práctica mensual:
-  - Filas: Piezas del repertorio
-  - Columnas: Días del mes
-  - Celdas: Número de fallos por día (código de colores)
-- **Columnas fijas iniciales:**
-  - Libro, Grado, Compositor, Nombre, Tempo, Instrumento
-- **Columnas estadísticas finales:**
-  - Días practicados (días distintos del mes)
-  - Media de fallos del mes
-  - Total de minutos practicados
-- **Tabla de actividades:**
-  - Resumen por tipo de actividad
-  - Días practicados por tipo
-  - Total de minutos por tipo
-- **Sistema de colores para daltonismo:**
-  - 6 niveles distinguibles (azul oscuro → azul medio → azul claro → verde → gris → rojo)
-  - Basado en número exacto de fallos por día
-  - Texto con contraste WCAG AA (blanco o negro según fondo)
-- **Exportación a PDF:**
-  - Orientación apaisada (landscape)
-  - Ancho completo de página (`max-width: none`)
-  - Colores preservados con `print-color-adjust: exact`
-  - **Importante:** Activar "Gráficos de fondo" en el navegador al imprimir
-- **Ajuste automático de texto:**
-  - Columnas fijas con `white-space: normal` (multi-línea)
-  - Mejor legibilidad sin tabla excesivamente ancha
-
-**Cálculo de estadísticas mensuales:**
-```sql
--- Fallos por pieza y día
-SELECT 
-    p.id,
-    DATE(f.fecha_registro) as dia,
-    SUM(f.cantidad) as fallos_dia
-FROM piezas p
-JOIN fallos f ON p.id = f.pieza_id
-WHERE YEAR(f.fecha_registro) = :anio 
-  AND MONTH(f.fecha_registro) = :mes
-GROUP BY p.id, DATE(f.fecha_registro)
-
--- Días practicados por pieza
-SELECT 
-    p.id,
-    COUNT(DISTINCT DATE(f.fecha_registro)) as dias_practicados
-FROM piezas p
-JOIN fallos f ON p.id = f.pieza_id
-WHERE YEAR(f.fecha_registro) = :anio 
-  AND MONTH(f.fecha_registro) = :mes
-GROUP BY p.id
-
--- Media de fallos del mes
-SUM(total_fallos) / COUNT(DISTINCT dias) as media_mes
-```
-
-**Códigos de color por número de fallos (adaptado para daltonismo):**
-- 🔵 Azul oscuro (#2E5F8A) - 0 fallos: Perfección
-- 🔵 Azul medio (#4A7BA7) - 1 fallo: Excelente
-- 🔵 Azul claro (#A3C1DA) - 2 fallos: Muy bien
-- 🟢 Verde amarillento (#D4E89E) - 3 fallos: Bien
-- ⚫ Gris (#9B9B9B) - 4 fallos: Mejorable
-- 🔴 Rojo (#E57373) - 5+ fallos: Atención
-
-**CSS para preservar colores en PDF:**
-```css
-* {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-}
-
-@media print {
-    @page {
-        size: landscape;
-        margin: 1cm;
-    }
-    
-    table, tr, td, th {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-    }
-}
-```
-
-**Nota importante sobre exportación PDF:**
-Para que los colores se mantengan en el PDF exportado, es necesario:
-1. Activar "Gráficos de fondo" en el diálogo de impresión del navegador
-2. Chrome/Brave/Edge: Ctrl+P → Más ajustes → ☑ Gráficos de fondo
-3. Firefox: Ctrl+P → Configuración → ☑ Imprimir fondos
-4. Safari: ⌘+P → Safari → ☑ Imprimir fondos
+**Importante:** 
+- Las sesiones creadas manualmente se marcan automáticamente como `estado='finalizada'`
+- La tabla usa `data-order` para ordenar correctamente por fecha real (YYYY-MM-DD) aunque se muestre en formato dd/mm/yyyy
+- Corregido bug de duplicación de última pieza en repertorio
 
 ---
 
@@ -1000,35 +727,70 @@ function obtenerPiezaSugerida(PDO $db, array $piezasYaSeleccionadas = []): ?arra
 
 ### Acciones AJAX (`sesion.php`)
 
+**Nota:** Todas las acciones AJAX se procesan directamente en `sesion.php` mediante detección del header `X-Requested-With`.
+
 #### Iniciar actividad
 ```
-GET sesion.php?accion=iniciar&actividad_id=X
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "iniciar", actividad_id: X }
 Retorna: JSON { success: true/false }
 ```
 
 #### Pausar actividad
 ```
-GET sesion.php?accion=pausar&actividad_id=X
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "pausar", actividad_id: X }
 Retorna: JSON { success: true/false }
 ```
 
-#### Reanudar actividad
+#### Guardar tiempo
 ```
-GET sesion.php?accion=reanudar&actividad_id=X
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "guardar", actividad_id: X, tiempo: segundos }
 Retorna: JSON { success: true/false }
 ```
 
-#### Completar actividad
+#### Guardar notas
 ```
-POST sesion.php?accion=completar&actividad_id=X
-Body: { fallos: N, notas: "..." }
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "guardar_notas", actividad_id: X, notas: "..." }
 Retorna: JSON { success: true/false }
 ```
 
-#### Actualizar tiempo
+#### Completar pieza (repertorio)
 ```
-GET sesion.php?accion=actualizar_tiempo&actividad_id=X
-Retorna: JSON { tiempo: segundos }
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "completar_pieza", actividad_id: X, pieza_id: Y, fallos: N, tiempo: segundos }
+Retorna: JSON { success: true/false, siguiente_pieza: {id, compositor, titulo, tempo} | null }
+```
+
+#### Terminar repertorio
+```
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "terminar_repertorio", actividad_id: X, tiempo: segundos, pieza_id: Y, fallos: N }
+Retorna: JSON { success: true/false, hay_siguiente: true/false }
+```
+
+#### Siguiente actividad
+```
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "siguiente", actividad_id: X, tiempo: segundos, pieza_id: Y, fallos: N }
+Retorna: JSON { success: true/false, hay_siguiente: true/false }
+```
+
+#### Finalizar sesión
+```
+POST sesion.php
+Headers: X-Requested-With: XMLHttpRequest
+Body: { accion: "finalizar", sesion_id: X, actividad_id: Y, tiempo: segundos, pieza_id: Z, fallos: N }
+Retorna: JSON { success: true/false }
 ```
 
 ---
@@ -1106,6 +868,10 @@ sudo systemctl enable mysql
 **Causa:** jQuery o DataTables no cargados  
 **Solución:** Verificar conexión a CDN en herramientas de red del navegador
 
+### Las sesiones no se finalizan automáticamente
+**Causa:** JavaScript bloqueado o error en AJAX  
+**Solución:** Verificar consola del navegador y que las peticiones AJAX lleguen correctamente
+
 ---
 
 ## 📞 Soporte y Contribución
@@ -1135,31 +901,28 @@ Crear issue en GitHub con:
 ## 🙏 Créditos
 
 **Desarrollador:** Guillermo  
-**Stack:** PHP, MySQL, JavaScript, DataTables, jQuery, Canvas API  
+**Stack:** PHP, MySQL, JavaScript, DataTables, jQuery  
 **Fecha de creación:** Enero 2025  
+**Última actualización:** Febrero 2025
 
 ---
 
-## 📝 Historial de Cambios
+## 📝 Changelog v1.5+
 
-### v1.9.0 (30 Enero 2025)
-- ✅ Dashboard unificado con estadísticas extendidas (tiempo semana/año, días año)
-- ✅ Racha mejorada (excluye día actual si no hay actividad)
-- ✅ Informe mensual: tabla piezas renombrada, columna ponderación, 2 gráficos de tarta
-- ✅ Informe anual: nuevo archivo completo con vista de 12 meses
-- ✅ Sesión: auto-finalización al salir y al terminar última actividad
-- ✅ Selectores mejorados en ambos informes (más grandes y legibles)
-- ✅ Botones "Volver a Informes" en ambos informes
-- ✅ Gráficos Canvas: distribución de actividades y rendimiento de piezas
+### Mejoras de Flujo (09 Febrero 2025)
+- ✅ **Flujo automático:** Las actividades se inician automáticamente tras completar la anterior (excepto la primera)
+- ✅ **Precarga inteligente:** La configuración de la última sesión se carga automáticamente al crear una nueva
+- ✅ **Botones contextuales:** Los botones se muestran/ocultan según el contexto (última actividad, etc.)
+- ✅ **Auto-finalización:** La sesión se finaliza automáticamente al completar la última actividad
+- ✅ **Visualización de tempo:** Muestra el tempo (♩ = X) junto a cada pieza de repertorio
+- ✅ **AJAX integrado:** Todo el procesamiento AJAX se hace en el mismo `sesion.php`
+- ✅ **Confirmaciones:** Diálogos de confirmación en todas las acciones críticas
 
-### v1.8.5 (26 Enero 2025)
-- Informe mensual con layout full-width
-- Preservación de colores en PDF
-- Documentación actualizada
-
-### v1.0 (22 Enero 2025)
-- Release inicial completo
+### Correcciones (09 Febrero 2025)
+- 🐛 **Bug duplicación piezas:** Corregida duplicación de última pieza en repertorio al editar sesiones
+- 🐛 **Ordenación fechas:** Corregida ordenación de fechas en gestionar_sesiones.php (ahora muestra más recientes primero)
+- 🐛 **Flujo repertorio:** Simplificado eliminando botón "Terminar Repertorio" en última actividad
 
 ---
 
-**Piano Tracker v1.9.0 - Documentación Técnica Completa**
+**Piano Tracker v1.5+ - Documentación Técnica Completa**
