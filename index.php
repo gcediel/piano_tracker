@@ -177,6 +177,15 @@ include 'includes/header.php';
 ?>
 
 <div class="card">
+    <h2>Acciones rápidas</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <a href="sesion.php" class="btn btn-success">Nueva sesión</a>
+        <a href="repertorio.php" class="btn btn-primary">Gestionar repertorio</a>
+        <a href="informes.php" class="btn btn-warning">Ver informes</a>
+    </div>
+</div>
+
+<div class="card">
     <h2>📊 Estadísticas de práctica</h2>
     
     <!-- Tiempo de práctica -->
@@ -247,15 +256,6 @@ include 'includes/header.php';
     <a href="sesion.php?continuar=<?php echo $sesionActiva['id']; ?>" class="btn btn-primary btn-small">Continuar sesión</a>
 </div>
 <?php endif; ?>
-
-<div class="card">
-    <h2>Acciones rápidas</h2>
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <a href="sesion.php" class="btn btn-success">Nueva sesión</a>
-        <a href="repertorio.php" class="btn btn-primary">Gestionar repertorio</a>
-        <a href="informes.php" class="btn btn-warning">Ver informes</a>
-    </div>
-</div>
 
 <div class="card">
     <h2>Últimas sesiones</h2>
