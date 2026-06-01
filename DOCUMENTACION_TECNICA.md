@@ -1,10 +1,11 @@
-# Piano Tracker - Documentación Técnica v1.5+
+# Piano Tracker - Documentación Técnica v1.6
 
 **Aplicación web para gestión de práctica de piano**  
 **Autor:** Guillermo  
-**Fecha:** 09 Febrero 2025  
-**Versión:** 1.5+  
-**Stack:** PHP 8.x + MySQL 8.x + Vanilla JavaScript
+**Fecha de creación:** Enero 2025  
+**Última actualización:** Junio 2026  
+**Versión:** 1.6  
+**Stack:** PHP 8.x + MySQL 8.x / MariaDB + Vanilla JavaScript
 
 ---
 
@@ -17,31 +18,30 @@
 5. [Base de Datos](#base-de-datos)
 6. [Funcionalidades por Módulo](#funcionalidades-por-módulo)
 7. [Algoritmos Clave](#algoritmos-clave)
-8. [Guía de Desarrollo](#guía-de-desarrollo)
-9. [API de Funciones](#api-de-funciones)
+8. [API de Funciones y AJAX](#api-de-funciones-y-ajax)
+9. [Guía de Desarrollo](#guía-de-desarrollo)
 
 ---
 
 ## 📖 Descripción General
 
 Piano Tracker es una aplicación web para pianistas que permite:
-- Gestionar un repertorio de piezas musicales
-- Registrar sesiones de práctica con cronómetro
+- Gestionar un repertorio de piezas musicales con tono MIDI asignado
+- Registrar sesiones de práctica con cronómetro y metrónomo integrado
+- Controlar el sonido del piano vía MIDI (Web MIDI API)
 - Llevar seguimiento de errores/fallos por pieza
 - Obtener sugerencias inteligentes de piezas a practicar
 - Visualizar estadísticas y tendencias de práctica
-- Generar informes detallados
 
 ### Características principales
 
-- **Gestión de repertorio:** Alta, edición y eliminación de piezas con metadatos (compositor, título, grado, tempo, ponderación)
-- **Sesiones de práctica:** Sistema de actividades con cronómetro integrado y flujo automático
-- **Seguimiento de fallos:** Registro de errores por pieza con cálculo de medias
-- **Algoritmo de sugerencia:** Sistema inteligente que prioriza piezas según fallos recientes y ponderación
+- **Gestión de repertorio:** CRUD de piezas con metadatos (compositor, título, grado, tempo, ponderación, tono MIDI GM)
+- **Metrónomo integrado:** BPM ajustable, pulsos por compás configurables, acento en primer pulso, control de volumen; preferencias persistidas en `localStorage`
+- **Soporte MIDI:** Envío automático de Program Change (Web MIDI API) al iniciar y cambiar pieza en Repertorio
+- **Sesiones de práctica:** Cronómetro con flujo automático entre actividades
+- **Edición en sesión:** Tempo y tono MIDI de una pieza editables durante la práctica sin salir de la página
+- **Configuración de metrónomo:** BPM por defecto para Técnica y Práctica configurables desde Admin
 - **Informes visuales:** Estadísticas con DataTables, gráficos y análisis temporal
-- **Gestión administrativa:** Creación manual de sesiones históricas
-- **Precarga inteligente:** Reutiliza la configuración de la última sesión
-- **Flujo optimizado:** Transiciones automáticas entre actividades sin interrupciones manuales
 
 ---
 
@@ -49,49 +49,38 @@ Piano Tracker es una aplicación web para pianistas que permite:
 
 ### Servidor
 - **PHP:** 8.0 o superior
-- **MySQL:** 8.0 o superior (o MariaDB 10.5+)
-- **Apache/Nginx:** Servidor web con mod_rewrite
-- **Extensiones PHP requeridas:**
-  - PDO
-  - pdo_mysql
-  - mbstring
-  - json
+- **MySQL:** 8.0+ o **MariaDB:** 10.3+
+- **Apache/Nginx** con mod_rewrite / `try_files`
+- **HTTPS** obligatorio para el uso del metrónomo MIDI (Web MIDI API)
 
 ### Cliente
-- Navegador moderno (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
+- Navegador **Chromium-based** para MIDI (Chrome, Brave, Vivaldi, Edge)
 - JavaScript habilitado
+- Para MIDI en tablet Android: cable **USB-C a USB-B** + piano con puerto USB to Host
 
 ---
 
 ## 🚀 Instalación
 
-### 1. Preparar el servidor
+### 1. Desplegar archivos
 
 ```bash
-# Clonar archivos al servidor web
 cd /var/www/html
 git clone [repositorio] piano_tracker
-cd piano_tracker
 ```
 
 ### 2. Configurar base de datos
 
-```bash
-# Crear base de datos
-mysql -u root -p
-```
-
 ```sql
 CREATE DATABASE piano_tracker CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'piano_user'@'localhost' IDENTIFIED BY 'tu_contraseña_segura';
+CREATE USER 'piano_user'@'localhost' IDENTIFIED BY 'tu_contraseña';
 GRANT ALL PRIVILEGES ON piano_tracker.* TO 'piano_user'@'localhost';
 FLUSH PRIVILEGES;
-EXIT;
 ```
 
 ```bash
-# Importar esquema
 mysql -u piano_user -p piano_tracker < database/schema.sql
+mysql -u piano_user -p piano_tracker < migracion_midi.sql
 ```
 
 ### 3. Configurar conexión
@@ -99,22 +88,18 @@ mysql -u piano_user -p piano_tracker < database/schema.sql
 Editar `config/database.php`:
 
 ```php
-$host = 'localhost';
-$dbname = 'piano_tracker';
-$username = 'piano_user';
-$password = 'tu_contraseña_segura';
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'piano_tracker');
+define('DB_USER', 'piano_user');
+define('DB_PASS', 'tu_contraseña');
 ```
 
 ### 4. Permisos
 
 ```bash
-chmod 755 -R /var/www/html/piano_tracker
 chown www-data:www-data -R /var/www/html/piano_tracker
+chmod 755 -R /var/www/html/piano_tracker
 ```
-
-### 5. Acceder
-
-Abrir navegador: `http://tu-servidor/piano_tracker/`
 
 ---
 
@@ -123,126 +108,125 @@ Abrir navegador: `http://tu-servidor/piano_tracker/`
 ```
 piano_tracker/
 ├── config/
-│   └── database.php           # Conexión DB + funciones auxiliares
+│   └── database.php           # Conexión DB + funciones globales
 ├── includes/
-│   ├── header.php            # Cabecera HTML + navegación
-│   └── footer.php            # Pie de página HTML
+│   ├── header.php             # Cabecera HTML + navegación
+│   └── footer.php             # Pie de página
 ├── assets/
 │   ├── css/
-│   │   └── style.css         # Estilos globales
+│   │   └── style.css          # Estilos globales (incluye metrónomo)
 │   └── js/
-│       └── app.js            # JavaScript auxiliar
+│       └── app.js             # JS auxiliar
 ├── database/
-│   └── schema.sql            # Esquema completo de la base de datos
-├── index.php                 # Página de inicio (dashboard)
-├── repertorio.php            # Gestión de piezas del repertorio
-├── sesion.php                # Sesiones de práctica (con AJAX integrado)
-├── informes.php              # Estadísticas y reportes
-├── admin.php                 # Panel de administración
-├── gestionar_sesiones.php    # CRUD de sesiones manuales
-└── DOCUMENTACION_TECNICA.md  # Este archivo
+│   └── schema.sql             # Esquema completo de BD
+├── index.php                  # Dashboard
+├── repertorio.php             # Gestión de piezas + tono MIDI GM
+├── sesion.php                 # Sesiones, timer, metrónomo, MIDI
+├── informes.php               # Estadísticas
+├── admin.php                  # Administración + config metrónomo
+├── gestionar_sesiones.php     # CRUD de sesiones manuales
+├── migracion_v1.3.sql         # Migración v1.3
+└── migracion_midi.sql         # Migración: columna programa_midi
 ```
 
 ---
 
 ## 🗄️ Base de Datos
 
-### Esquema de tablas
-
-#### Tabla: `piezas`
-Almacena el repertorio de piezas musicales.
+### Tabla: `piezas`
 
 ```sql
 CREATE TABLE piezas (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    compositor VARCHAR(255) NOT NULL,
-    titulo VARCHAR(255) NOT NULL,
-    libro VARCHAR(255),
-    grado INT,
-    tempo INT,
-    ponderacion DECIMAL(4,2) DEFAULT 1.00,
-    instrumento VARCHAR(100) DEFAULT 'Piano',
-    activa BOOLEAN DEFAULT 1,
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    compositor    VARCHAR(200) NOT NULL,
+    titulo        VARCHAR(300) NOT NULL,
+    libro         VARCHAR(200),
+    grado         INT,
+    tempo         INT,
+    ponderacion   DECIMAL(5,2) DEFAULT 1.00,
+    instrumento   VARCHAR(50)  DEFAULT 'Piano',   -- campo legado, no se usa en UI
+    programa_midi INT          NOT NULL DEFAULT 0, -- programa GM (0-127)
+    activa        BOOLEAN      DEFAULT TRUE,
+    fecha_creacion TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-**Campos importantes:**
-- `tempo`: Velocidad de la pieza (se muestra como ♩ = X durante la práctica)
-- `ponderacion`: Factor de importancia (1.0-2.0). Piezas con mayor ponderación tienen más prioridad en el algoritmo de sugerencia.
-- `activa`: Booleano para ocultar/mostrar piezas sin eliminarlas.
+**Campos clave:**
+- `tempo`: Velocidad de la pieza; se carga automáticamente en el metrónomo al iniciar Repertorio
+- `programa_midi`: Número de programa General MIDI (0 = Acoustic Grand Piano). Se envía como MIDI Program Change al piano
+- `ponderacion`: Factor de prioridad en el algoritmo de sugerencia
 
-#### Tabla: `sesiones`
-Registra las sesiones de práctica.
+### Tabla: `configuracion`
+
+Almacena pares clave-valor de configuración global.
+
+```sql
+CREATE TABLE configuracion (
+    clave              VARCHAR(100) PRIMARY KEY,
+    valor              TEXT NOT NULL,
+    descripcion        VARCHAR(500),
+    fecha_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+**Claves utilizadas:**
+
+| Clave               | Valor por defecto | Descripción                              |
+|---------------------|:-----------------:|------------------------------------------|
+| `metro_bpm_tecnica` | 144               | BPM por defecto del metrónomo — Técnica  |
+| `metro_bpm_practica`| 92                | BPM por defecto del metrónomo — Práctica |
+
+### Tabla: `sesiones`
 
 ```sql
 CREATE TABLE sesiones (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    fecha DATE NOT NULL,
-    estado ENUM('planificada', 'en_curso', 'finalizada') DEFAULT 'planificada',
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    fecha          DATE NOT NULL,
+    estado         ENUM('planificada','en_curso','finalizada') DEFAULT 'planificada',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-**Estados:**
-- `planificada`: Sesión creada pero no iniciada
-- `en_curso`: Sesión activa con actividades pendientes
-- `finalizada`: Todas las actividades completadas
-
-#### Tabla: `actividades`
-Actividades dentro de cada sesión.
+### Tabla: `actividades`
 
 ```sql
 CREATE TABLE actividades (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    sesion_id INT NOT NULL,
-    orden INT NOT NULL,
-    tipo ENUM('calentamiento', 'practica', 'tecnica', 'repertorio', 
-              'improvisacion', 'composicion') NOT NULL,
-    pieza_id INT,
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    sesion_id       INT NOT NULL,
+    orden           INT NOT NULL,
+    tipo            ENUM('calentamiento','tecnica','practica','repertorio',
+                         'improvisacion','composicion') NOT NULL,
+    pieza_id        INT NULL,
     tiempo_segundos INT DEFAULT 0,
-    notas TEXT,
-    estado ENUM('pendiente', 'en_curso', 'completada') DEFAULT 'pendiente',
-    fecha_inicio TIMESTAMP NULL,
-    fecha_fin TIMESTAMP NULL,
+    notas           TEXT,
+    estado          ENUM('pendiente','en_curso','completada') DEFAULT 'pendiente',
+    fecha_inicio    DATETIME NULL,
+    fecha_fin       DATETIME NULL,
     FOREIGN KEY (sesion_id) REFERENCES sesiones(id) ON DELETE CASCADE,
-    FOREIGN KEY (pieza_id) REFERENCES piezas(id) ON DELETE SET NULL
+    FOREIGN KEY (pieza_id)  REFERENCES piezas(id)   ON DELETE SET NULL
 );
 ```
 
-**Tipos de actividades:**
-- `calentamiento`: Ejercicios de calentamiento
-- `tecnica`: Ejercicios técnicos (escalas, arpegios)
-- `practica`: Práctica general
-- `repertorio`: Piezas del repertorio (requiere `pieza_id`)
-- `improvisacion`: Improvisación libre
-- `composicion`: Composición
-
-#### Tabla: `fallos`
-Registro de errores/fallos por pieza.
+### Tabla: `fallos`
 
 ```sql
 CREATE TABLE fallos (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    actividad_id INT NOT NULL,
-    pieza_id INT NOT NULL,
-    cantidad INT NOT NULL,
-    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    actividad_id    INT NOT NULL,
+    pieza_id        INT NOT NULL,
+    cantidad        INT NOT NULL DEFAULT 0,
+    fecha_registro  DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (actividad_id) REFERENCES actividades(id) ON DELETE CASCADE,
-    FOREIGN KEY (pieza_id) REFERENCES piezas(id) ON DELETE CASCADE
+    FOREIGN KEY (pieza_id)     REFERENCES piezas(id)      ON DELETE CASCADE
 );
 ```
-
-**Uso:**
-- Cada vez que se completa una actividad de repertorio, se registra el número de fallos cometidos.
-- La `fecha_registro` se usa para cálculos temporales (últimos 30 días).
 
 ### Relaciones
 
 ```
 sesiones (1) ──→ (N) actividades
-piezas (1) ──→ (N) actividades (cuando tipo='repertorio')
-piezas (1) ──→ (N) fallos
+piezas   (1) ──→ (N) actividades  [solo tipo='repertorio']
+piezas   (1) ──→ (N) fallos
 actividades (1) ──→ (N) fallos
 ```
 
@@ -252,230 +236,119 @@ actividades (1) ──→ (N) fallos
 
 ### 1. Inicio (`index.php`)
 
-**Propósito:** Dashboard principal con resumen de actividad.
-
-**Funcionalidades:**
-- Muestra tiempo practicado hoy, este mes
-- Número de piezas activas en repertorio
-- Racha actual y más larga de práctica consecutiva
-- Porcentaje de días practicados (semana, mes, año)
-- Últimas 5 sesiones con media de fallos del repertorio
-- Enlace rápido a sesión en curso (si existe)
-- Auto-corrección de sesiones (marca como finalizadas las que tienen todas las actividades completadas)
-
-**Consultas SQL principales:**
-```sql
--- Auto-corrección de sesiones
-UPDATE sesiones s 
-SET s.estado = 'finalizada' 
-WHERE s.estado IN ('planificada', 'en_curso')
-AND NOT EXISTS (
-    SELECT 1 FROM actividades a 
-    WHERE a.sesion_id = s.id 
-    AND a.estado IN ('pendiente', 'en_curso')
-)
-
--- Últimas sesiones con media de fallos
-SELECT s.*, 
-    (SELECT SUM(tiempo_segundos) FROM actividades WHERE sesion_id = s.id) as tiempo_total,
-    (SELECT ROUND(AVG(f.cantidad), 2)
-     FROM fallos f 
-     JOIN actividades a ON f.actividad_id = a.id 
-     WHERE a.sesion_id = s.id 
-     AND a.tipo = 'repertorio') as media_fallos_repertorio
-FROM sesiones s 
-ORDER BY fecha DESC, id DESC 
-LIMIT 5
-```
+Dashboard con resumen de actividad:
+- Tiempo practicado hoy y este mes
+- Piezas activas, racha de días, porcentaje de práctica
+- Últimas 5 sesiones con media de fallos
+- Auto-corrección de sesiones inconsistentes (marca finalizadas las que tienen todas las actividades completadas)
 
 ---
 
 ### 2. Repertorio (`repertorio.php`)
 
-**Propósito:** Gestión completa del repertorio de piezas.
+CRUD completo de piezas:
+- **Campos del formulario:** Compositor, Título, Libro, Grado, Tempo, Tono MIDI (GM, desplegable con los 128 instrumentos GM), Ponderación
+- **Campo eliminado:** "Instrumento" (texto libre) — reemplazado por el desplegable Tono MIDI
+- **Tabla de piezas** con DataTables: muestra número de programa GM en columna "Tono GM"
+- **Estadísticas por pieza** (últimos 30 días): días practicados, media de fallos, código de color
 
-**Funcionalidades:**
-- **CRUD de piezas:**
-  - Crear nueva pieza con metadatos (compositor, título, libro, grado, tempo, ponderación)
-  - Editar pieza existente
-  - Desactivar pieza (ocultar sin eliminar)
-  - Eliminar pieza (solo si no tiene registros de práctica)
-- **Estadísticas por pieza (últimos 30 días):**
-  - Días practicados (días distintos)
-  - Media de fallos por día (total fallos / días practicados)
-  - Estado codificado por color según media
-- **DataTables:** Búsqueda, ordenamiento, paginación
+**Códigos de color (media fallos/día):**
 
-**Cálculo de media de fallos:**
-```sql
-SELECT 
-    p.*,
-    COUNT(DISTINCT DATE(f.fecha_registro)) as dias_practicados_30d,
-    SUM(f.cantidad) as total_fallos_30d,
-    ROUND(
-        SUM(f.cantidad) / NULLIF(COUNT(DISTINCT DATE(f.fecha_registro)), 0),
-    2) as media_fallos_dia
-FROM piezas p
-LEFT JOIN fallos f ON p.id = f.pieza_id
-WHERE f.fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-GROUP BY p.id
-```
-
-**Códigos de color por media:**
-- 🟢 Verde (< 0.5): Perfección
-- 🔵 Azul (0.5-1.5): Excelente
-- 🟡 Amarillo (1.5-2.5): Muy bien
-- 🟠 Naranja (2.5-3.5): Bien
-- 🟣 Morado (3.5-5): Mejorable
-- 🔴 Rojo (> 5): Atención
+| Color       | Rango        | Estado    |
+|-------------|:------------:|-----------|
+| Azul oscuro | < 0.5        | Excelente |
+| Azul medio  | 0.5 – 1.5    | Muy bien  |
+| Azul claro  | 1.5 – 2.5    | Bien      |
+| Verde       | 2.5 – 3.5    | Aceptable |
+| Gris        | 3.5 – 5.0    | Mejorable |
+| Rojo        | > 5.0        | Atención  |
 
 ---
 
 ### 3. Sesión (`sesion.php`)
 
-**Propósito:** Gestión de sesiones de práctica con cronómetro en tiempo real y flujo automático.
+Módulo central. Gestiona la planificación, ejecución y seguimiento de sesiones.
 
-**Funcionalidades:**
+#### 3.1 Planificación
+- Precarga automática de la configuración de la última sesión
+- Dos modos: iniciar ahora o preparar para después
 
-#### 3.1 Crear sesión
-- **Precarga automática:** Al entrar, se carga automáticamente la configuración de la última sesión (tipos de actividades y notas)
-- **Modo 1:** Planificar sesión para más tarde
-- **Modo 2:** Iniciar sesión inmediatamente
-- Configurar actividades (tipos + duración estimada)
-- Para actividades de repertorio: sistema de sugerencia automática
-- Permite modificar, añadir o eliminar actividades antes de iniciar
+#### 3.2 Timer con flujo automático
+- Cronómetro JavaScript + AJAX (guardado cada 5 s)
+- Primera actividad: inicio manual; siguientes: automático
+- Botones contextuales según tipo y posición de la actividad
+- Auto-finalización al completar la última actividad
 
-#### 3.2 Ejecutar sesión con flujo automático
-- **Cronómetro en tiempo real** con JavaScript + AJAX integrado (sin archivo externo)
-- **Auto-inicio inteligente:**
-  - Primera actividad: Requiere pulsar "Iniciar" manualmente
-  - Actividades intermedias: Se inician automáticamente al completar la anterior
-  - Última actividad: Se inicia automáticamente al completar la anterior
-- **Botones contextuales:**
-  - "Iniciar": Solo visible en la primera actividad
-  - "Pausar/Reanudar": Siempre disponible durante ejecución
-  - "Siguiente actividad": Solo visible si NO es la última actividad
-  - "Completar pieza" (repertorio): Registra fallos y carga siguiente pieza
-  - "Terminar Repertorio": Solo visible si NO es la última actividad
-  - "Finalizar sesión": Siempre visible
-- **Auto-finalización:** Al completar la última actividad, la sesión se finaliza automáticamente con mensaje de confirmación
-- **Confirmaciones:** Todos los botones críticos tienen diálogos de confirmación
-- **Visualización de tempo:** Muestra el tempo (♩ = X) junto al nombre de cada pieza de repertorio
-- Control de inicio/pausa/reanudar/completar por actividad
-- Registro de fallos al completar actividad de repertorio
-- Añadir y guardar notas por actividad en tiempo real
-- Barra de progreso visual
+#### 3.3 Metrónomo integrado
 
-#### 3.3 Ver detalles de sesión
-- Resumen completo de sesión finalizada
-- Lista de actividades con tiempos, fallos y tempo de piezas
-- Estadísticas agregadas
+Panel visible durante toda la sesión activa. Implementado con **Web Audio API** (scheduler de lookahead, sin librerías externas).
 
-**Flujo de ejecución mejorado:**
-```
-1. Usuario crea sesión → estado='planificada' (con config de última sesión precargada)
-2. Usuario inicia sesión → estado='en_curso'
-3. Primera actividad:
-   - Usuario debe pulsar "Iniciar" manualmente
-   - Cronómetro inicia (actualización cada segundo vía AJAX)
-4. Al completar actividad:
-   - actividad.estado='completada', fecha_fin=NOW()
-   - Si tipo='repertorio': registrar fallos en tabla fallos
-   - Si hay siguiente actividad: cargarla e iniciar automáticamente
-   - Si es la última: finalizar sesión automáticamente con confirmación
-5. Botones visibles según contexto:
-   - "Siguiente actividad": Solo si NO es última actividad
-   - "Terminar Repertorio": Solo si NO es última actividad
-   - "Finalizar sesión": Siempre disponible
-```
+**Controles:**
 
-**AJAX integrado:**
-- Todas las peticiones AJAX se procesan en el mismo `sesion.php`
-- Detección mediante header `X-Requested-With: XMLHttpRequest`
-- Acciones disponibles: iniciar, pausar, guardar, guardar_notas, completar_pieza, terminar_repertorio, siguiente, finalizar
+| Control              | Comportamiento                                           |
+|----------------------|----------------------------------------------------------|
+| BPM (-5/-1/+1/+5)   | Ajusta velocidad; si está en marcha, reinicia al instante|
+| Pulsos/compás (−/+) | Cambia número de pulsos; mínimo 1, máximo 12             |
+| Acento 1er pulso    | Toggle ON/OFF; primer pulso: 880 Hz; resto: 440 Hz       |
+| Volumen             | Slider 0–100 %; se aplica al siguiente tick              |
+| Iniciar/Parar       | Arranca o detiene el metrónomo                           |
 
-**Limpieza de sesiones programadas:**
-Al crear nueva sesión, elimina sesiones programadas pendientes del día:
-```sql
-DELETE FROM sesiones 
-WHERE estado = 'planificada' 
-AND fecha = CURDATE()
-```
+**BPM por defecto según actividad:**
+
+| Tipo de actividad | BPM por defecto    |
+|-------------------|--------------------|
+| Técnica           | `metro_bpm_tecnica` (Admin) |
+| Práctica          | `metro_bpm_practica` (Admin)|
+| Repertorio        | Tempo de la pieza activa (o `metro_bpm_practica` si no tiene) |
+| Otras             | `metro_bpm_practica`       |
+
+**Persistencia en `localStorage`:**
+
+| Clave             | Contenido                   |
+|-------------------|-----------------------------|
+| `metro_volumen`   | Volumen (0.0 – 1.0)         |
+| `metro_acento`    | Acento primer pulso (bool)  |
+| `midi_output_id`  | ID del puerto MIDI elegido  |
+
+#### 3.4 Edición de Tempo y Tono en sesión (solo Repertorio)
+
+Junto al botón "Guardar notas" aparecen dos controles adicionales:
+
+- **Tempo:** campo numérico con el tempo actual de la pieza. Al pulsar "Guardar tempo": actualiza `piezas.tempo` en BD y ajusta el metrónomo.
+- **Tono:** desplegable GM con el programa actual. Al pulsar "Guardar tono": actualiza `piezas.programa_midi` en BD y envía Program Change MIDI.
+
+Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan automáticamente.
+
+#### 3.5 MIDI (Web MIDI API)
+
+**Requisito:** HTTPS + navegador Chromium-based.
+
+**Selector de dispositivo:** en la parte superior del widget del metrónomo. Solo aparece si `navigator.requestMIDIAccess` está disponible. Detecta dispositivos en hot-plug.
+
+**Envío automático de Program Change:**
+- Al pulsar "Iniciar" en una actividad de Repertorio
+- Al completar una pieza y cargar la siguiente
+
+**Mensaje enviado:** `[0xC0, programa_midi]` (canal 1, program 0–127)
 
 ---
 
-### 4. Informes (`informes.php`)
+### 4. Admin (`admin.php`)
 
-**Propósito:** Análisis estadístico de la práctica.
-
-**Funcionalidades:**
-- **Filtros de periodo:** Día, semana, mes, año
-- **Tiempo por actividad:** Gráfico de distribución
-- **Práctica de piezas del repertorio:**
-  - Tabla con días practicados y media de fallos
-  - DataTables con búsqueda
-- **Práctica diaria:**
-  - Tabla con tiempo por tipo de actividad por día
-  - Columna de media de fallos del repertorio
-  - DataTables
-
-**Consulta de práctica diaria:**
-```sql
-SELECT 
-    s.fecha,
-    s.id as sesion_id,
-    SUM(a.tiempo_segundos) as tiempo_total,
-    SUM(CASE WHEN a.tipo = 'calentamiento' THEN a.tiempo_segundos ELSE 0 END) as tiempo_calentamiento,
-    SUM(CASE WHEN a.tipo = 'tecnica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_tecnica,
-    SUM(CASE WHEN a.tipo = 'practica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_practica,
-    SUM(CASE WHEN a.tipo = 'repertorio' THEN a.tiempo_segundos ELSE 0 END) as tiempo_repertorio,
-    SUM(CASE WHEN a.tipo = 'improvisacion' THEN a.tiempo_segundos ELSE 0 END) as tiempo_improvisacion,
-    SUM(CASE WHEN a.tipo = 'composicion' THEN a.tiempo_segundos ELSE 0 END) as tiempo_composicion,
-    (SELECT ROUND(AVG(f.cantidad), 2)
-     FROM fallos f 
-     JOIN actividades a2 ON f.actividad_id = a2.id 
-     WHERE a2.sesion_id = s.id 
-     AND a2.tipo = 'repertorio') as media_fallos_repertorio
-FROM sesiones s
-LEFT JOIN actividades a ON s.id = a.sesion_id
-WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
-GROUP BY s.fecha, s.id
-ORDER BY s.fecha
-```
+- **Configuración del metrónomo:** BPM por defecto para Técnica y Práctica, guardados en tabla `configuracion`
+- **Gestión de sesiones:** enlace a `gestionar_sesiones.php`
+- **Exportación:** CSV de sesiones, backup SQL completo
+- **Importación:** restaurar backup SQL
+- **Borrar datos:** eliminación completa con confirmación
+- **Cambiar contraseña**
 
 ---
 
-### 5. Admin (`admin.php`)
+### 5. Gestionar Sesiones (`gestionar_sesiones.php`)
 
-**Propósito:** Panel de administración.
-
-**Funcionalidades:**
-- Enlace a gestión de sesiones manuales
-- Exportación de datos (CSV/JSON)
-- Importación de datos
-- Cambio de contraseña
-
----
-
-### 6. Gestionar Sesiones (`gestionar_sesiones.php`)
-
-**Propósito:** CRUD manual de sesiones históricas.
-
-**Funcionalidades:**
-- **Crear sesión manual:** Útil para registrar sesiones pasadas
-  - Especificar fecha exacta
-  - Añadir múltiples actividades
-  - Para actividades de repertorio: seleccionar múltiples piezas y registrar fallos
-  - Especificar tiempo de cada actividad
-- **Editar sesión:** Modificar actividades y tiempos
-- **Eliminar sesión:** Borra sesión completa con todas sus actividades
-- **Tabla con DataTables:** Búsqueda y ordenamiento de sesiones
-- **Ordenación correcta:** Las sesiones se muestran por defecto ordenadas por fecha descendente (más recientes primero)
-
-**Importante:** 
-- Las sesiones creadas manualmente se marcan automáticamente como `estado='finalizada'`
-- La tabla usa `data-order` para ordenar correctamente por fecha real (YYYY-MM-DD) aunque se muestre en formato dd/mm/yyyy
-- Corregido bug de duplicación de última pieza en repertorio
+CRUD de sesiones históricas:
+- Crear sesión manual con fecha, actividades, piezas y tiempos
+- Editar y eliminar sesiones pasadas
 
 ---
 
@@ -483,446 +356,175 @@ ORDER BY s.fecha
 
 ### Algoritmo de Sugerencia de Piezas
 
-**Ubicación:** `config/database.php` → función `obtenerPiezaSugerida()`
+**Ubicación:** `config/database.php` → `obtenerPiezaSugerida()`
 
-**Propósito:** Determinar qué pieza del repertorio debe practicarse a continuación.
-
-**Fórmula:**
 ```
 Score = SUM((10 - Fallos_día_i) × Peso_día_i) × (1 / Ponderación)
 
-Donde:
-- Fallos_día_i = cantidad de fallos en el día i
-- Peso_día_i = peso temporal lineal (1 a 30)
-  - Hace 30 días → peso 1
-  - Hace 1 día → peso 30
-- Ponderación = importancia de la pieza (1.0 - 2.0)
+Peso_día_i: hace 30 días → 1; ayer → 30
+Fallos → puntos: 0 fallos = 10 pts, 10+ fallos = 0 pts
 ```
 
-**Inversión de fallos:**
-```
-Puntos = MAX(0, 10 - Fallos)
+**Ordenamiento:** menor score = mayor prioridad.
 
-0 fallos → 10 puntos (perfecto)
-1 fallo → 9 puntos
-...
-10+ fallos → 0 puntos (malo)
-```
+**Casos especiales:**
+- Sin práctica reciente → score 0 → máxima prioridad
+- Alta ponderación → score reducido → más prioridad
 
-**Ordenamiento:**
-- **MENOR score = MAYOR prioridad** (se sugiere primero)
-
-**Lógica:**
-- Piezas con **muchos fallos recientes** → score bajo → **alta prioridad**
-- Piezas **bien tocadas** → score alto → baja prioridad
-- Piezas **importantes** (alta ponderación) → score reducido → más prioridad
-- Piezas **sin práctica reciente** → score 0 → **máxima prioridad**
-
-**Implementación SQL:**
+**SQL:**
 ```sql
-SELECT 
-    SUM(
-        GREATEST(0, 10 - f.cantidad) * 
-        (31 - DATEDIFF(CURDATE(), DATE(f.fecha_registro)))
-    ) as suma_ponderada
+SELECT SUM(
+    GREATEST(0, 10 - f.cantidad) *
+    (31 - DATEDIFF(CURDATE(), DATE(f.fecha_registro)))
+) as suma_ponderada
 FROM fallos f
-WHERE f.pieza_id = :pieza_id 
+WHERE f.pieza_id = :pieza_id
   AND f.fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
   AND DATEDIFF(CURDATE(), DATE(f.fecha_registro)) < 30
 ```
 
-**Ejemplo práctico:**
+---
 
-```
-Pieza A: "Un poco de blues" (ponderación 1.0)
-- Ayer: 4 fallos → (10-4) × 30 = 180
-- Hace 3 días: 4 fallos → (10-4) × 28 = 168
-- Hace 5 días: 3 fallos → (10-3) × 26 = 182
-- Suma: 530
-- Score: 530 × (1/1.0) = 530
+## 📚 API de Funciones y AJAX
 
-Pieza B: "Preludio en Do" (ponderación 1.5)
-- Hace 15 días: 2 fallos → (10-2) × 16 = 128
-- Suma: 128
-- Score: 128 × (1/1.5) = 85.33
+### Funciones globales (`config/database.php`)
 
-Pieza C: "Invención 1" (ponderación 1.25)
-- Sin práctica reciente
-- Suma: 0
-- Score: 0
+#### `getDB() → PDO`
+Devuelve la conexión PDO (singleton).
 
-Orden de sugerencia:
-1. Invención 1 (score: 0) ← Se sugiere primero
-2. Preludio en Do (score: 85.33)
-3. Un poco de blues (score: 530) ← Practicada recientemente, no se sugiere
-```
+#### `formatearTiempo(int $segundos) → string`
+Convierte segundos a `HH:MM:SS`.
+
+#### `obtenerPiezaSugerida(PDO $db, array $excluidas) → array|null`
+Devuelve la pieza con menor score excluyendo las ya practicadas en la sesión actual.
+
+---
+
+### Acciones AJAX (`sesion.php`)
+
+Todas vía `POST sesion.php` con header `X-Requested-With: XMLHttpRequest` y body JSON.
+
+| Acción                | Parámetros de entrada                                     | Respuesta                                        |
+|-----------------------|-----------------------------------------------------------|--------------------------------------------------|
+| `iniciar`             | `actividad_id`                                            | `{success}`                                      |
+| `guardar`             | `actividad_id`, `tiempo`                                  | `{success}`                                      |
+| `guardar_notas`       | `actividad_id`, `notas`                                   | `{success}`                                      |
+| `guardar_tempo`       | `pieza_id`, `tempo` (20–300)                              | `{success}`                                      |
+| `guardar_programa_midi`| `pieza_id`, `programa_midi` (0–127)                      | `{success}`                                      |
+| `completar_pieza`     | `actividad_id`, `pieza_id`, `fallos`, `tiempo`            | `{success, siguiente_pieza: {id, compositor, titulo, tempo, programa_midi} \| null}` |
+| `terminar_repertorio` | `actividad_id`, `tiempo`, `pieza_id`, `fallos`            | `{success, hay_siguiente}`                       |
+| `siguiente`           | `actividad_id`, `tiempo`, `pieza_id`, `fallos`            | `{success, hay_siguiente}`                       |
+| `finalizar`           | `sesion_id`, `actividad_id`, `tiempo`, `pieza_id`, `fallos`| `{success}`                                     |
 
 ---
 
 ## 🛠️ Guía de Desarrollo
 
-### Añadir nueva página/módulo
+### Añadir nueva página
 
-1. **Crear archivo PHP:**
 ```php
 <?php
 require_once 'config/database.php';
-$pageTitle = 'Mi Nuevo Módulo - Piano Tracker';
+$pageTitle = 'Mi Módulo - Piano Tracker';
 $db = getDB();
-
-// Tu lógica aquí
-
 include 'includes/header.php';
 ?>
-
-<!-- Tu HTML aquí -->
-
+<!-- HTML aquí -->
 <?php include 'includes/footer.php'; ?>
 ```
 
-2. **Añadir enlace en navegación:**
-Editar `includes/header.php`:
-```php
-<a href="mi_modulo.php">Mi Módulo</a>
-```
+### Añadir campo a `piezas`
 
-### Añadir nueva tabla a la base de datos
-
-1. **Crear migración SQL:**
+1. Crear migración SQL:
 ```sql
--- database/migrations/002_nueva_tabla.sql
-CREATE TABLE mi_tabla (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    campo VARCHAR(255),
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+ALTER TABLE piezas ADD COLUMN mi_campo VARCHAR(100) DEFAULT NULL;
 ```
 
-2. **Aplicar migración:**
-```bash
-mysql -u piano_user -p piano_tracker < database/migrations/002_nueva_tabla.sql
-```
+2. Actualizar INSERT/UPDATE en `repertorio.php`
+3. Añadir campo al formulario y a la tabla
 
-3. **Actualizar `database/schema.sql`** con la nueva tabla.
+### Modificar BPM por defecto del metrónomo
 
-### Añadir DataTables a una tabla
+Desde la interfaz: **Admin** → "Configuración del metrónomo".
 
-```html
-<!-- 1. Incluir CSS en <head> -->
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
-
-<!-- 2. Crear tabla con id único -->
-<table id="miTabla" class="display" style="width:100%">
-    <thead>
-        <tr>
-            <th>Columna 1</th>
-            <th>Columna 2</th>
-        </tr>
-    </thead>
-    <tbody>
-        <!-- PHP loop aquí -->
-    </tbody>
-</table>
-
-<!-- 3. Incluir JS antes de </body> -->
-<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-
-<script>
-$(document).ready(function() {
-    $('#miTabla').DataTable({
-        "language": {
-            "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json"
-        },
-        "pageLength": 10,
-        "order": [[0, "asc"]]
-    });
-});
-</script>
-```
-
-### Modificar el algoritmo de sugerencia
-
-Editar `config/database.php`, función `obtenerPiezaSugerida()`.
-
-**Ejemplo - Cambiar peso temporal a exponencial:**
-```php
-// Línea actual (peso lineal):
-SUM(GREATEST(0, 10 - f.cantidad) * (31 - DATEDIFF(CURDATE(), DATE(f.fecha_registro))))
-
-// Cambiar a peso exponencial:
-SUM(GREATEST(0, 10 - f.cantidad) * EXP(-0.1 * DATEDIFF(CURDATE(), DATE(f.fecha_registro))))
-```
-
-**Ejemplo - Cambiar fórmula de score:**
-```php
-// Línea actual:
-$score = $sumaPonderada * (1.0 / max($pieza['ponderacion'], 0.1));
-
-// Cambiar a multiplicar (en vez de dividir):
-$score = $sumaPonderada * $pieza['ponderacion'];
-
-// No olvides invertir el ordenamiento si cambias esto
-```
-
-### Añadir nuevo tipo de actividad
-
-1. **Modificar enum en base de datos:**
+Directamente en BD:
 ```sql
-ALTER TABLE actividades 
-MODIFY tipo ENUM('calentamiento', 'practica', 'tecnica', 'repertorio', 
-                 'improvisacion', 'composicion', 'mi_nuevo_tipo') NOT NULL;
+INSERT INTO configuracion (clave, valor, descripcion)
+VALUES ('metro_bpm_tecnica', '120', 'BPM Técnica')
+ON DUPLICATE KEY UPDATE valor = '120';
 ```
 
-2. **Añadir opción en `sesion.php`:**
-```html
-<option value="mi_nuevo_tipo">Mi Nuevo Tipo</option>
-```
+### Añadir nuevo instrumento GM personalizado
 
-3. **Añadir caso en consultas de `informes.php`:**
-```sql
-SUM(CASE WHEN a.tipo = 'mi_nuevo_tipo' THEN a.tiempo_segundos ELSE 0 END) as tiempo_mi_nuevo_tipo
-```
-
----
-
-## 📚 API de Funciones
-
-### Funciones globales (`config/database.php`)
-
-#### `getDB()`
-```php
-/**
- * Obtiene conexión PDO a la base de datos
- * @return PDO Objeto de conexión
- */
-function getDB(): PDO
-```
-
-#### `formatearTiempo($segundos)`
-```php
-/**
- * Convierte segundos a formato legible
- * @param int $segundos Tiempo en segundos
- * @return string Formato "Xh Ym" o "Ym" o "Xs"
- * 
- * Ejemplos:
- * 3661 → "1h 1m"
- * 125 → "2m"
- * 45 → "45s"
- */
-function formatearTiempo(int $segundos): string
-```
-
-#### `obtenerPiezaSugerida($db, $piezasYaSeleccionadas)`
-```php
-/**
- * Obtiene la siguiente pieza a practicar según algoritmo
- * @param PDO $db Conexión a base de datos
- * @param array $piezasYaSeleccionadas IDs de piezas ya seleccionadas
- * @return array|null Datos de la pieza sugerida o null
- */
-function obtenerPiezaSugerida(PDO $db, array $piezasYaSeleccionadas = []): ?array
-```
-
-### Acciones AJAX (`sesion.php`)
-
-**Nota:** Todas las acciones AJAX se procesan directamente en `sesion.php` mediante detección del header `X-Requested-With`.
-
-#### Iniciar actividad
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "iniciar", actividad_id: X }
-Retorna: JSON { success: true/false }
-```
-
-#### Pausar actividad
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "pausar", actividad_id: X }
-Retorna: JSON { success: true/false }
-```
-
-#### Guardar tiempo
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "guardar", actividad_id: X, tiempo: segundos }
-Retorna: JSON { success: true/false }
-```
-
-#### Guardar notas
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "guardar_notas", actividad_id: X, notas: "..." }
-Retorna: JSON { success: true/false }
-```
-
-#### Completar pieza (repertorio)
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "completar_pieza", actividad_id: X, pieza_id: Y, fallos: N, tiempo: segundos }
-Retorna: JSON { success: true/false, siguiente_pieza: {id, compositor, titulo, tempo} | null }
-```
-
-#### Terminar repertorio
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "terminar_repertorio", actividad_id: X, tiempo: segundos, pieza_id: Y, fallos: N }
-Retorna: JSON { success: true/false, hay_siguiente: true/false }
-```
-
-#### Siguiente actividad
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "siguiente", actividad_id: X, tiempo: segundos, pieza_id: Y, fallos: N }
-Retorna: JSON { success: true/false, hay_siguiente: true/false }
-```
-
-#### Finalizar sesión
-```
-POST sesion.php
-Headers: X-Requested-With: XMLHttpRequest
-Body: { accion: "finalizar", sesion_id: X, actividad_id: Y, tiempo: segundos, pieza_id: Z, fallos: N }
-Retorna: JSON { success: true/false }
-```
+El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmInstrumentos`) y en `sesion.php` (PHP array `$gmInstrumentosSession` + JS array `GM_INSTRUMENTS`). Para modificar nombres, actualizar los tres lugares.
 
 ---
 
 ## 🔒 Seguridad
 
-### Medidas implementadas
-
-1. **Prepared Statements:** Todas las consultas SQL usan PDO con placeholders
-2. **Validación de entrada:** Sanitización con `htmlspecialchars()` en output
-3. **CSRF:** Considerar añadir tokens en formularios (pendiente)
-4. **SQL Injection:** Protegido vía PDO prepared statements
-5. **XSS:** Output escapado con `htmlspecialchars()`
-
-### Recomendaciones adicionales
-
-```php
-// Añadir tokens CSRF a formularios
-session_start();
-$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-
-// En formulario:
-<input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-
-// En procesamiento:
-if ($_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-    die('Invalid CSRF token');
-}
-```
-
----
-
-## 📊 Optimización
-
-### Índices recomendados
-
-```sql
--- Ya existen índices en PRIMARY KEY y FOREIGN KEY
--- Añadir estos para mejorar rendimiento:
-
-CREATE INDEX idx_fallos_fecha ON fallos(fecha_registro);
-CREATE INDEX idx_sesiones_fecha ON sesiones(fecha);
-CREATE INDEX idx_actividades_sesion ON actividades(sesion_id);
-CREATE INDEX idx_piezas_activa ON piezas(activa);
-```
-
-### Caché de consultas frecuentes
-
-Para instancias con muchos datos, considerar:
-- Cachear estadísticas del dashboard en archivo JSON
-- Regenerar caché cada hora vía cron
-- Leer de caché en vez de base de datos
+- **Prepared Statements** en todas las consultas SQL (PDO)
+- **htmlspecialchars()** en todos los outputs HTML
+- **Validación de rangos** en AJAX: tempo (20–300), programa MIDI (0–127), BPM (20–300)
+- **HTTPS requerido** para Web MIDI API
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Error: "Connection refused"
-**Causa:** MySQL no accesible  
-**Solución:**
-```bash
-sudo systemctl start mysql
-sudo systemctl enable mysql
-```
-
-### Error: "Access denied for user"
-**Causa:** Credenciales incorrectas  
-**Solución:** Verificar `config/database.php` y permisos de usuario MySQL
-
-### Cronómetro no funciona
-**Causa:** JavaScript deshabilitado o error en consola  
-**Solución:** Verificar consola del navegador (F12)
-
-### DataTables no se muestran
-**Causa:** jQuery o DataTables no cargados  
-**Solución:** Verificar conexión a CDN en herramientas de red del navegador
-
-### Las sesiones no se finalizan automáticamente
-**Causa:** JavaScript bloqueado o error en AJAX  
-**Solución:** Verificar consola del navegador y que las peticiones AJAX lleguen correctamente
+| Problema | Causa probable | Solución |
+|----------|---------------|----------|
+| MIDI no disponible | HTTP en lugar de HTTPS | Servir la app por HTTPS |
+| MIDI no disponible | Firefox/DuckDuckGo | Usar Chrome, Brave o Vivaldi |
+| Piano no aparece en lista | Cable no seleccionado como MIDI | En Android, elegir modo MIDI al conectar USB |
+| Metrónomo sin sonido | Sin interacción previa del usuario | Pulsar cualquier botón antes de iniciar |
+| BPM por defecto incorrecto | Sin registros en `configuracion` | Guardar desde Admin → Configuración metrónomo |
+| Cronómetro no guarda | Error AJAX | Ver consola del navegador (F12) |
 
 ---
 
-## 📞 Soporte y Contribución
+## 📝 Changelog
 
-### Reportar bugs
-Crear issue en GitHub con:
-- Descripción del problema
-- Pasos para reproducir
-- Logs de error (PHP y navegador)
-- Versión de PHP y MySQL
+### v1.6 — Junio 2026
 
-### Contribuir
-1. Fork del repositorio
-2. Crear rama feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit cambios (`git commit -am 'Añadir nueva funcionalidad'`)
-4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Crear Pull Request
+**Metrónomo:**
+- ✅ Metrónomo integrado en la vista de sesión (Web Audio API, scheduler de lookahead)
+- ✅ Controles BPM: -5 / -1 / +1 / +5
+- ✅ Pulsos por compás configurables (1–12), indicadores visuales por pulso
+- ✅ Acento en primer pulso (880 Hz vs 440 Hz), activable/desactivable
+- ✅ Control de volumen con slider; persiste en `localStorage`
+- ✅ BPM por defecto según tipo de actividad, configurable desde Admin
+- ✅ En Repertorio: BPM se ajusta automáticamente al tempo de la pieza
 
----
+**MIDI:**
+- ✅ Soporte Web MIDI API (Chrome/Chromium en Android y escritorio)
+- ✅ Columna `programa_midi` (INT, 0–127) añadida a tabla `piezas`
+- ✅ Desplegable con los 128 instrumentos General MIDI en Repertorio
+- ✅ Selector de puerto MIDI en el widget del metrónomo
+- ✅ Program Change automático al iniciar actividad de Repertorio y al cambiar de pieza
+- ✅ Tono MIDI editable durante la sesión sin salir de la página
 
-## 📄 Licencia
+**Sesión:**
+- ✅ Tempo de la pieza editable durante práctica de Repertorio (guarda en BD + actualiza metrónomo)
+- ✅ Tono MIDI editable durante práctica de Repertorio (guarda en BD + envía PC)
+- ✅ Botones del metrónomo optimizados para uso táctil (tablet)
 
-[Especificar licencia aquí]
+**Repertorio:**
+- ✅ Campo "Instrumento" (texto libre) eliminado; sustituido por "Tono MIDI (GM)"
+- ✅ Columna "Tono GM" en tabla de piezas
 
----
+**Admin:**
+- ✅ Nueva sección "Configuración del metrónomo" (BPM Técnica y Práctica)
 
-## 🙏 Créditos
+### v1.5 — Febrero 2025
 
-**Desarrollador:** Guillermo  
-**Stack:** PHP, MySQL, JavaScript, DataTables, jQuery  
-**Fecha de creación:** Enero 2025  
-**Última actualización:** Febrero 2025
-
----
-
-## 📝 Changelog v1.5+
-
-### Mejoras de Flujo (09 Febrero 2025)
-- ✅ **Flujo automático:** Las actividades se inician automáticamente tras completar la anterior (excepto la primera)
-- ✅ **Precarga inteligente:** La configuración de la última sesión se carga automáticamente al crear una nueva
-- ✅ **Botones contextuales:** Los botones se muestran/ocultan según el contexto (última actividad, etc.)
-- ✅ **Auto-finalización:** La sesión se finaliza automáticamente al completar la última actividad
-- ✅ **Visualización de tempo:** Muestra el tempo (♩ = X) junto a cada pieza de repertorio
-- ✅ **AJAX integrado:** Todo el procesamiento AJAX se hace en el mismo `sesion.php`
-- ✅ **Confirmaciones:** Diálogos de confirmación en todas las acciones críticas
-
-### Correcciones (09 Febrero 2025)
-- 🐛 **Bug duplicación piezas:** Corregida duplicación de última pieza en repertorio al editar sesiones
-- 🐛 **Ordenación fechas:** Corregida ordenación de fechas en gestionar_sesiones.php (ahora muestra más recientes primero)
-- 🐛 **Flujo repertorio:** Simplificado eliminando botón "Terminar Repertorio" en última actividad
+- ✅ Flujo automático entre actividades
+- ✅ Precarga inteligente de la última sesión
+- ✅ Botones contextuales (última actividad, tipo repertorio)
+- ✅ Auto-finalización de sesión
+- ✅ Visualización de tempo junto a cada pieza
+- 🐛 Corregida duplicación de última pieza en repertorio
+- 🐛 Corregida ordenación de fechas en gestionar_sesiones
 
 ---
 
-**Piano Tracker v1.5+ - Documentación Técnica Completa**
+**Piano Tracker v1.6 — Documentación Técnica**

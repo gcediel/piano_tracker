@@ -6,14 +6,49 @@ $db = getDB();
 $mensaje = '';
 $error = '';
 
+$gmInstrumentos = [
+    0=>'Acoustic Grand Piano',1=>'Bright Acoustic Piano',2=>'Electric Grand Piano',3=>'Honky-tonk Piano',
+    4=>'Electric Piano 1',5=>'Electric Piano 2',6=>'Harpsichord',7=>'Clavinet',
+    8=>'Celesta',9=>'Glockenspiel',10=>'Music Box',11=>'Vibraphone',
+    12=>'Marimba',13=>'Xylophone',14=>'Tubular Bells',15=>'Dulcimer',
+    16=>'Drawbar Organ',17=>'Percussive Organ',18=>'Rock Organ',19=>'Church Organ',
+    20=>'Reed Organ',21=>'Accordion',22=>'Harmonica',23=>'Tango Accordion',
+    24=>'Nylon Guitar',25=>'Steel Guitar',26=>'Jazz Guitar',27=>'Clean Guitar',
+    28=>'Muted Guitar',29=>'Overdriven Guitar',30=>'Distortion Guitar',31=>'Guitar Harmonics',
+    32=>'Acoustic Bass',33=>'Finger Bass',34=>'Pick Bass',35=>'Fretless Bass',
+    36=>'Slap Bass 1',37=>'Slap Bass 2',38=>'Synth Bass 1',39=>'Synth Bass 2',
+    40=>'Violin',41=>'Viola',42=>'Cello',43=>'Contrabass',
+    44=>'Tremolo Strings',45=>'Pizzicato Strings',46=>'Orchestral Harp',47=>'Timpani',
+    48=>'String Ensemble 1',49=>'String Ensemble 2',50=>'Synth Strings 1',51=>'Synth Strings 2',
+    52=>'Choir Aahs',53=>'Voice Oohs',54=>'Synth Choir',55=>'Orchestra Hit',
+    56=>'Trumpet',57=>'Trombone',58=>'Tuba',59=>'Muted Trumpet',
+    60=>'French Horn',61=>'Brass Section',62=>'Synth Brass 1',63=>'Synth Brass 2',
+    64=>'Soprano Sax',65=>'Alto Sax',66=>'Tenor Sax',67=>'Baritone Sax',
+    68=>'Oboe',69=>'English Horn',70=>'Bassoon',71=>'Clarinet',
+    72=>'Piccolo',73=>'Flute',74=>'Recorder',75=>'Pan Flute',
+    76=>'Blown Bottle',77=>'Shakuhachi',78=>'Whistle',79=>'Ocarina',
+    80=>'Lead 1 (square)',81=>'Lead 2 (sawtooth)',82=>'Lead 3 (calliope)',83=>'Lead 4 (chiff)',
+    84=>'Lead 5 (charang)',85=>'Lead 6 (voice)',86=>'Lead 7 (fifths)',87=>'Lead 8 (bass+lead)',
+    88=>'Pad 1 (new age)',89=>'Pad 2 (warm)',90=>'Pad 3 (polysynth)',91=>'Pad 4 (choir)',
+    92=>'Pad 5 (bowed)',93=>'Pad 6 (metallic)',94=>'Pad 7 (halo)',95=>'Pad 8 (sweep)',
+    96=>'FX 1 (rain)',97=>'FX 2 (soundtrack)',98=>'FX 3 (crystal)',99=>'FX 4 (atmosphere)',
+    100=>'FX 5 (brightness)',101=>'FX 6 (goblins)',102=>'FX 7 (echoes)',103=>'FX 8 (sci-fi)',
+    104=>'Sitar',105=>'Banjo',106=>'Shamisen',107=>'Koto',
+    108=>'Kalimba',109=>'Bag pipe',110=>'Fiddle',111=>'Shanai',
+    112=>'Tinkle Bell',113=>'Agogo',114=>'Steel Drums',115=>'Woodblock',
+    116=>'Taiko Drum',117=>'Melodic Tom',118=>'Synth Drum',119=>'Reverse Cymbal',
+    120=>'Guitar Fret Noise',121=>'Breath Noise',122=>'Seashore',123=>'Bird Tweet',
+    124=>'Telephone Ring',125=>'Helicopter',126=>'Applause',127=>'Gunshot',
+];
+
 // Procesar acciones CRUD
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $accion = $_POST['accion'] ?? '';
     
     if ($accion === 'crear') {
         try {
-            $stmt = $db->prepare("INSERT INTO piezas (compositor, titulo, libro, grado, tempo, ponderacion, instrumento) 
-                                  VALUES (:compositor, :titulo, :libro, :grado, :tempo, :ponderacion, :instrumento)");
+            $stmt = $db->prepare("INSERT INTO piezas (compositor, titulo, libro, grado, tempo, ponderacion, programa_midi)
+                                  VALUES (:compositor, :titulo, :libro, :grado, :tempo, :ponderacion, :programa_midi)");
             $stmt->execute([
                 ':compositor' => $_POST['compositor'],
                 ':titulo' => $_POST['titulo'],
@@ -21,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':grado' => $_POST['grado'] ?: null,
                 ':tempo' => $_POST['tempo'] ?: null,
                 ':ponderacion' => $_POST['ponderacion'] ?: 1.00,
-                ':instrumento' => $_POST['instrumento'] ?: 'Piano'
+                ':programa_midi' => intval($_POST['programa_midi'] ?? 0),
             ]);
             $mensaje = 'Pieza añadida correctamente';
         } catch (PDOException $e) {
@@ -31,9 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($accion === 'editar') {
         try {
-            $stmt = $db->prepare("UPDATE piezas SET compositor = :compositor, titulo = :titulo, 
-                                  libro = :libro, grado = :grado, tempo = :tempo, ponderacion = :ponderacion, 
-                                  instrumento = :instrumento
+            $stmt = $db->prepare("UPDATE piezas SET compositor = :compositor, titulo = :titulo,
+                                  libro = :libro, grado = :grado, tempo = :tempo, ponderacion = :ponderacion,
+                                  programa_midi = :programa_midi
                                   WHERE id = :id");
             $stmt->execute([
                 ':id' => $_POST['id'],
@@ -43,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':grado' => $_POST['grado'] ?: null,
                 ':tempo' => $_POST['tempo'] ?: null,
                 ':ponderacion' => $_POST['ponderacion'] ?: 1.00,
-                ':instrumento' => $_POST['instrumento'] ?: 'Piano'
+                ':programa_midi' => intval($_POST['programa_midi'] ?? 0),
             ]);
             $mensaje = 'Pieza actualizada correctamente';
         } catch (PDOException $e) {
@@ -232,17 +267,23 @@ include 'includes/header.php';
         
         <div class="form-inline">
             <div class="form-group">
-                <label for="ponderacion">Ponderación</label>
-                <input type="number" id="ponderacion" name="ponderacion" step="0.01" min="0.01" max="10" 
-                       value="<?php echo htmlspecialchars($piezaEditar['ponderacion'] ?? '1.00'); ?>">
+                <label for="programa_midi">Tono MIDI (GM)</label>
+                <select id="programa_midi" name="programa_midi">
+                    <?php foreach ($gmInstrumentos as $num => $nombre): ?>
+                    <option value="<?php echo $num; ?>"
+                        <?php if (($piezaEditar['programa_midi'] ?? 0) == $num): ?>selected<?php endif; ?>>
+                        <?php echo $num; ?> – <?php echo htmlspecialchars($nombre); ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
-            
+        </div>
+
+        <div class="form-inline">
             <div class="form-group">
-                <label for="instrumento">Instrumento</label>
-                <input type="text" id="instrumento" name="instrumento" 
-                       value="<?php echo htmlspecialchars($piezaEditar['instrumento'] ?? 'Piano'); ?>"
-                       placeholder="Piano o 0">
-                <small style="color: #666; font-size: 0.85rem;">Piano o 0 para piano. Número para otro instrumento.</small>
+                <label for="ponderacion">Ponderación</label>
+                <input type="number" id="ponderacion" name="ponderacion" step="0.01" min="0.01" max="10"
+                       value="<?php echo htmlspecialchars($piezaEditar['ponderacion'] ?? '1.00'); ?>">
             </div>
         </div>
         
@@ -274,8 +315,8 @@ include 'includes/header.php';
                         <th>Libro</th>
                         <th>Gr.</th>
                         <th>Tempo</th>
+                        <th>Tono GM</th>
                         <th>Pond.</th>
-                        <th>Instr.</th>
                         <th title="Días practicados últimos 30 días">Días</th>
                         <th title="Media de fallos por día (últimos 30 días)">M.Fallos</th>
                         <th>Estado</th>
@@ -318,10 +359,6 @@ include 'includes/header.php';
                         }
                     }
                     
-                    $instrumentoDisplay = $pieza['instrumento'];
-                    if ($instrumentoDisplay === '0' || strtolower($instrumentoDisplay) === 'piano') {
-                        $instrumentoDisplay = 'Piano';
-                    }
                     ?>
                     <tr style="<?php echo !$pieza['activa'] ? 'opacity: 0.5;' : ''; ?>">
                         <td><?php echo htmlspecialchars($pieza['compositor']); ?></td>
@@ -329,8 +366,8 @@ include 'includes/header.php';
                         <td><?php echo htmlspecialchars($pieza['libro'] ?? '-'); ?></td>
                         <td><?php echo $pieza['grado'] ?? '-'; ?></td>
                         <td><?php echo $pieza['tempo'] ?? '-'; ?></td>
+                        <td><?php echo $pieza['programa_midi'] ?? 0; ?></td>
                         <td><?php echo number_format($pieza['ponderacion'], 2); ?></td>
-                        <td><?php echo htmlspecialchars($instrumentoDisplay); ?></td>
                         <td style="text-align: center;">
                             <?php echo $pieza['dias_practicados_30d'] > 0 ? $pieza['dias_practicados_30d'] : '-'; ?>
                         </td>
@@ -419,17 +456,17 @@ $(document).ready(function() {
         "order": [[0, "asc"]],
         "columnDefs": [
             { "orderable": false, "targets": -1 }, // Desactivar ordenamiento en columna Acciones
-            { "width": "13%", "targets": 0 },  // Compositor
-            { "width": "16%", "targets": 1 },  // Título
+            { "width": "14%", "targets": 0 },  // Compositor
+            { "width": "17%", "targets": 1 },  // Título
             { "width": "13%", "targets": 2 },  // Libro
-            { "width": "5%", "targets": 3 },   // Grado
-            { "width": "6%", "targets": 4 },   // Tempo
-            { "width": "6%", "targets": 5 },   // Ponderación
-            { "width": "7%", "targets": 6 },   // Instrumento
-            { "width": "5%", "targets": 7 },   // Días
-            { "width": "9%", "targets": 8 },   // Media
-            { "width": "6%", "targets": 9 },   // Estado
-            { "width": "14%", "targets": 10 }  // Acciones
+            { "width": "5%",  "targets": 3 },  // Grado
+            { "width": "6%",  "targets": 4 },  // Tempo
+            { "width": "6%",  "targets": 5 },  // Tono GM
+            { "width": "6%",  "targets": 6 },  // Ponderación
+            { "width": "5%",  "targets": 7 },  // Días
+            { "width": "9%",  "targets": 8 },  // Media
+            { "width": "6%",  "targets": 9 },  // Estado
+            { "width": "13%", "targets": 10 }  // Acciones
         ],
         "autoWidth": false,
         "scrollX": false
