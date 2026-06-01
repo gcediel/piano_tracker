@@ -134,6 +134,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['borrar_datos'])) {
     }
 }
 
+// Guardar configuración del metrónomo
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_config_metro'])) {
+    $bpmTecnica  = intval($_POST['metro_bpm_tecnica']  ?? 144);
+    $bpmPractica = intval($_POST['metro_bpm_practica'] ?? 92);
+
+    if ($bpmTecnica < 20 || $bpmTecnica > 300 || $bpmPractica < 20 || $bpmPractica > 300) {
+        $error = 'Los valores de BPM deben estar entre 20 y 300.';
+    } else {
+        $stmt = $db->prepare("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?, ?, ?)
+                              ON DUPLICATE KEY UPDATE valor = ?");
+        $stmt->execute(['metro_bpm_tecnica',  $bpmTecnica,  'BPM por defecto del metrónomo para Técnica',  $bpmTecnica]);
+        $stmt->execute(['metro_bpm_practica', $bpmPractica, 'BPM por defecto del metrónomo para Práctica', $bpmPractica]);
+        $mensaje = '✓ Configuración del metrónomo guardada correctamente.';
+    }
+}
+
+// Leer configuración del metrónomo
+$configMetro = ['metro_bpm_tecnica' => 144, 'metro_bpm_practica' => 92];
+$stmt = $db->query("SELECT clave, valor FROM configuracion WHERE clave IN ('metro_bpm_tecnica', 'metro_bpm_practica')");
+foreach ($stmt->fetchAll() as $row) {
+    $configMetro[$row['clave']] = intval($row['valor']);
+}
+
 // Cambiar contraseña
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_password'])) {
     $passwordActual = $_POST['password_actual'] ?? '';
@@ -165,6 +188,35 @@ include 'includes/header.php';
 <?php if ($error): ?>
 <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
+
+<div class="card">
+    <h2>🎵 Configuración del metrónomo</h2>
+    <p>BPM que se asignará por defecto al metrónomo según el tipo de actividad.</p>
+
+    <form method="POST" action="">
+        <input type="hidden" name="guardar_config_metro" value="1">
+
+        <div class="form-inline">
+            <div class="form-group">
+                <label for="metro_bpm_tecnica">BPM por defecto — Técnica</label>
+                <input type="number" id="metro_bpm_tecnica" name="metro_bpm_tecnica"
+                       min="20" max="300"
+                       value="<?php echo $configMetro['metro_bpm_tecnica']; ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="metro_bpm_practica">BPM por defecto — Práctica</label>
+                <input type="number" id="metro_bpm_practica" name="metro_bpm_practica"
+                       min="20" max="300"
+                       value="<?php echo $configMetro['metro_bpm_practica']; ?>" required>
+            </div>
+        </div>
+        <small style="color: #666;">El Repertorio usa siempre el tempo de la pieza (o el BPM de Práctica si no tiene tempo asignado).</small>
+
+        <div class="mt-1">
+            <button type="submit" class="btn btn-primary">Guardar configuración</button>
+        </div>
+    </form>
+</div>
 
 <div class="card">
     <h2>Cambiar contraseña</h2>

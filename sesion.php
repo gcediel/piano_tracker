@@ -44,6 +44,18 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $stmt->execute([':notas' => $notas, ':id' => $actividadId]);
                 echo json_encode(['success' => true]);
                 break;
+
+            case 'guardar_tempo':
+                $piezaId = intval($input['pieza_id']);
+                $tempo   = intval($input['tempo']);
+                if ($piezaId < 1 || $tempo < 20 || $tempo > 300) {
+                    echo json_encode(['success' => false, 'error' => 'Datos inválidos']);
+                    break;
+                }
+                $stmt = $db->prepare("UPDATE piezas SET tempo = :tempo WHERE id = :id");
+                $stmt->execute([':tempo' => $tempo, ':id' => $piezaId]);
+                echo json_encode(['success' => true]);
+                break;
                 
             case 'completar_pieza':
                 $actividadId = $input['actividad_id'];
@@ -347,6 +359,25 @@ if (isset($_GET['sesion'])) {
     }
 }
 
+// Calcular BPM por defecto del metrónomo para la actividad actual
+$defaultBpm = 92;
+if ($actividadActual) {
+    $bpmTecnica  = 144;
+    $bpmPractica = 92;
+    $stmtCfg = $db->query("SELECT clave, valor FROM configuracion WHERE clave IN ('metro_bpm_tecnica', 'metro_bpm_practica')");
+    foreach ($stmtCfg->fetchAll() as $cfgRow) {
+        if ($cfgRow['clave'] === 'metro_bpm_tecnica')  $bpmTecnica  = intval($cfgRow['valor']);
+        if ($cfgRow['clave'] === 'metro_bpm_practica') $bpmPractica = intval($cfgRow['valor']);
+    }
+    if ($actividadActual['tipo'] === 'tecnica') {
+        $defaultBpm = $bpmTecnica;
+    } elseif ($actividadActual['tipo'] === 'repertorio') {
+        $defaultBpm = $actividadActual['tempo'] ?: $bpmPractica;
+    } else {
+        $defaultBpm = $bpmPractica;
+    }
+}
+
 include 'includes/header.php';
 ?>
 
@@ -425,14 +456,28 @@ include 'includes/header.php';
                 <?php endif; ?>
                 <br>
                 <div style="margin-top: 0.5rem;">
-                    <input type="text" id="notasActividad" 
-                           placeholder="Añadir/editar notas de esta actividad..." 
+                    <input type="text" id="notasActividad"
+                           placeholder="Añadir/editar notas de esta actividad..."
                            value="<?php echo htmlspecialchars($actividadActual['notas'] ?? ''); ?>"
                            style="width: 100%; max-width: 500px; padding: 0.4rem; border-radius: 4px;">
                     <button onclick="guardarNotas()" class="btn btn-small btn-primary" style="margin-left: 0.5rem;">
                         💾 Guardar notas
                     </button>
                 </div>
+                <?php if ($actividadActual['tipo'] === 'repertorio'): ?>
+                <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="color: rgba(255,255,255,0.85); font-size: 0.95rem;">Tempo:</span>
+                    <input type="number" id="tempoEditar"
+                           value="<?php echo $actividadActual['tempo'] ?: $defaultBpm; ?>"
+                           min="20" max="300"
+                           oninput="tempoInputChanged(this.value)"
+                           style="width: 80px; text-align: center; padding: 0.4rem; border-radius: 4px; border: none; font-size: 1rem; touch-action: manipulation;">
+                    <button onclick="guardarTempoPieza()" class="btn btn-small btn-primary" style="touch-action: manipulation;">
+                        💾 Guardar tempo
+                    </button>
+                    <span id="tempoGuardadoMsg" style="font-size: 0.85rem; color: #2ecc71; display: none;">✓ Guardado</span>
+                </div>
+                <?php endif; ?>
             </div>
             <h2 id="timerTime">00:00:00</h2>
             
@@ -485,8 +530,51 @@ include 'includes/header.php';
                 </div>
             </div>
             <?php endif; ?>
+
+
+        <!-- Metrónomo -->
+        <div class="metronome-widget">
+            <h3>♩ Metrónomo</h3>
+            <div class="metro-controls-row">
+                <div class="metro-control-group">
+                    <div class="metro-control-label">BPM</div>
+                    <div class="metro-btn-row">
+                        <button class="btn-metro" onclick="metronomeChangeBpm(-5)">-5</button>
+                        <button class="btn-metro" onclick="metronomeChangeBpm(-1)">-1</button>
+                        <span id="metronomeBpmDisplay" class="metro-value"><?php echo $defaultBpm; ?></span>
+                        <button class="btn-metro" onclick="metronomeChangeBpm(+1)">+1</button>
+                        <button class="btn-metro" onclick="metronomeChangeBpm(+5)">+5</button>
+                    </div>
+                </div>
+                <div class="metro-control-group">
+                    <div class="metro-control-label">Pulsos/compás</div>
+                    <div class="metro-btn-row">
+                        <button class="btn-metro" onclick="metronomeChangeBeats(-1)">−</button>
+                        <span id="metronomeBeatsDisplay" class="metro-beats-value">4</span>
+                        <button class="btn-metro" onclick="metronomeChangeBeats(+1)">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="metro-beats-visual" id="metronomeBeatsVisual"></div>
+            <div style="display:flex; align-items:center; justify-content:center; margin-bottom:0.6rem;">
+                <button id="metronomeAccentBtn" class="btn-metro" onclick="metronomeToggleAccent()"
+                        style="padding:0.3rem 0.9rem; font-size:0.85rem;">
+                    Acento 1er pulso: <strong id="metronomeAccentLabel">ON</strong>
+                </button>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:0.6rem; margin-bottom:0.75rem;">
+                <span style="font-size:0.95rem;">🔇</span>
+                <input type="range" id="metronomeVolSlider" min="0" max="100" value="70"
+                       oninput="metronomeSetVolume(this.value)"
+                       style="width:130px; accent-color:#f39c12; cursor:pointer;">
+                <span style="font-size:0.95rem;">🔊</span>
+                <span id="metronomeVolDisplay" style="color:white; font-size:0.85rem; min-width:2.5rem;">70%</span>
+            </div>
+            <button id="metronomeBtnToggle" class="btn btn-success" onclick="metronomeToggle()"
+                    style="touch-action:manipulation;">▶ Iniciar metrónomo</button>
         </div>
-        
+        </div>
+
         <input type="hidden" id="sesionId" value="<?php echo $sesion['id']; ?>">
         <input type="hidden" id="actividadId" value="<?php echo $actividadActual['id']; ?>">
         <input type="hidden" id="piezaId" value="<?php echo $actividadActual['pieza_id'] ?? ''; ?>">
@@ -817,7 +905,14 @@ function completarPieza() {
             
             document.getElementById('piezaActualInfo').innerHTML = textoInfo;
             document.getElementById('fallos').value = 0;
-            
+            const tempoInput = document.getElementById('tempoEditar');
+            if (tempoInput) {
+                tempoInput.value = data.siguiente_pieza.tempo || '';
+            }
+            if (data.siguiente_pieza.tempo) {
+                metronomeSetBpm(data.siguiente_pieza.tempo);
+            }
+
             piezasCompletadas++;
             document.getElementById('piezasTocadas').textContent = 'Piezas completadas: ' + piezasCompletadas;
             
@@ -982,11 +1077,186 @@ function actualizarDisplay() {
     const horas = Math.floor(tiempoActual / 3600);
     const minutos = Math.floor((tiempoActual % 3600) / 60);
     const segundos = tiempoActual % 60;
-    
-    document.getElementById('timerTime').textContent = 
-        String(horas).padStart(2, '0') + ':' + 
-        String(minutos).padStart(2, '0') + ':' + 
+
+    document.getElementById('timerTime').textContent =
+        String(horas).padStart(2, '0') + ':' +
+        String(minutos).padStart(2, '0') + ':' +
         String(segundos).padStart(2, '0');
+}
+
+// === METRÓNOMO ===
+const METRO_LOOKAHEAD = 0.1;
+const METRO_INTERVAL = 25;
+
+let metronomeBpm = <?php echo $defaultBpm; ?>;
+let metronomeBeats = 4;
+let metronomeRunning = false;
+let metronomeCurBeat = 0;
+let metronomeNextTime = 0;
+let metronomeTimer = null;
+let metronomeAudioCtx = null;
+let metronomeVolume = parseFloat(localStorage.getItem('metro_volumen') || '0.7');
+let metronomeAccent = localStorage.getItem('metro_acento') !== 'false';
+
+function metronomeGetCtx() {
+    if (!metronomeAudioCtx) {
+        metronomeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (metronomeAudioCtx.state === 'suspended') metronomeAudioCtx.resume();
+    return metronomeAudioCtx;
+}
+
+function metronomePlayClick(time, isFirst) {
+    const ctx = metronomeGetCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = (isFirst && metronomeAccent) ? 880 : 440;
+    gain.gain.setValueAtTime(metronomeVolume, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+    osc.start(time);
+    osc.stop(time + 0.06);
+}
+
+function metronomeSchedule() {
+    const ctx = metronomeGetCtx();
+    while (metronomeNextTime < ctx.currentTime + METRO_LOOKAHEAD) {
+        const beat = metronomeCurBeat;
+        const t = metronomeNextTime;
+        metronomePlayClick(t, beat === 0);
+        const delay = Math.max(0, (t - ctx.currentTime) * 1000);
+        setTimeout(() => metronomeSetActiveBeat(beat), delay);
+        metronomeCurBeat = (metronomeCurBeat + 1) % metronomeBeats;
+        metronomeNextTime += 60.0 / metronomeBpm;
+    }
+    metronomeTimer = setTimeout(metronomeSchedule, METRO_INTERVAL);
+}
+
+function metronomeStart() {
+    const ctx = metronomeGetCtx();
+    metronomeCurBeat = 0;
+    metronomeNextTime = ctx.currentTime + 0.05;
+    metronomeSchedule();
+    metronomeRunning = true;
+    const btn = document.getElementById('metronomeBtnToggle');
+    btn.textContent = '⏹ Parar metrónomo';
+    btn.classList.remove('btn-success');
+    btn.classList.add('btn-warning');
+}
+
+function metronomeStop() {
+    clearTimeout(metronomeTimer);
+    metronomeRunning = false;
+    metronomeCurBeat = 0;
+    const btn = document.getElementById('metronomeBtnToggle');
+    btn.textContent = '▶ Iniciar metrónomo';
+    btn.classList.remove('btn-warning');
+    btn.classList.add('btn-success');
+    metronomeSetActiveBeat(-1);
+}
+
+function metronomeToggle() {
+    if (metronomeRunning) metronomeStop();
+    else metronomeStart();
+}
+
+function metronomeChangeBpm(delta) {
+    metronomeBpm = Math.max(20, Math.min(300, metronomeBpm + delta));
+    document.getElementById('metronomeBpmDisplay').textContent = metronomeBpm;
+    if (metronomeRunning) { metronomeStop(); metronomeStart(); }
+}
+
+function metronomeSetBpm(bpm) {
+    metronomeBpm = Math.max(20, Math.min(300, parseInt(bpm) || 92));
+    document.getElementById('metronomeBpmDisplay').textContent = metronomeBpm;
+    if (metronomeRunning) { metronomeStop(); metronomeStart(); }
+}
+
+function metronomeChangeBeats(delta) {
+    metronomeBeats = Math.max(1, Math.min(12, metronomeBeats + delta));
+    document.getElementById('metronomeBeatsDisplay').textContent = metronomeBeats;
+    metronomeBuildDots();
+    if (metronomeRunning) { metronomeStop(); metronomeStart(); }
+}
+
+function metronomeSetActiveBeat(active) {
+    document.querySelectorAll('.metro-beat-dot').forEach((dot, i) => {
+        dot.className = 'metro-beat-dot';
+        if (i === 0) dot.classList.add('first-idle');
+        if (i === active) {
+            dot.classList.remove('first-idle');
+            dot.classList.add(i === 0 ? 'active-first' : 'active');
+        }
+    });
+}
+
+function metronomeBuildDots() {
+    const container = document.getElementById('metronomeBeatsVisual');
+    container.innerHTML = '';
+    for (let i = 0; i < metronomeBeats; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'metro-beat-dot' + (i === 0 ? ' first-idle' : '');
+        container.appendChild(dot);
+    }
+}
+
+metronomeBuildDots();
+
+// Inicializar slider de volumen y botón de acento con valores guardados
+(function() {
+    const pct = Math.round(metronomeVolume * 100);
+    document.getElementById('metronomeVolSlider').value = pct;
+    document.getElementById('metronomeVolDisplay').textContent = pct + '%';
+
+    document.getElementById('metronomeAccentLabel').textContent = metronomeAccent ? 'ON' : 'OFF';
+    document.getElementById('metronomeAccentBtn').style.opacity = metronomeAccent ? '1' : '0.5';
+})();
+
+function metronomeSetVolume(val) {
+    metronomeVolume = parseInt(val) / 100;
+    localStorage.setItem('metro_volumen', metronomeVolume.toString());
+    document.getElementById('metronomeVolDisplay').textContent = val + '%';
+}
+
+function metronomeToggleAccent() {
+    metronomeAccent = !metronomeAccent;
+    localStorage.setItem('metro_acento', metronomeAccent.toString());
+    document.getElementById('metronomeAccentLabel').textContent = metronomeAccent ? 'ON' : 'OFF';
+    document.getElementById('metronomeAccentBtn').style.opacity = metronomeAccent ? '1' : '0.5';
+}
+
+function tempoInputChanged(val) {
+    const bpm = parseInt(val);
+    if (bpm >= 20 && bpm <= 300) metronomeSetBpm(bpm);
+}
+
+function guardarTempoPieza() {
+    const tempoInput = document.getElementById('tempoEditar');
+    const piezaId = document.getElementById('piezaId').value;
+    if (!tempoInput || !piezaId) return;
+
+    const tempo = parseInt(tempoInput.value);
+    if (!tempo || tempo < 20 || tempo > 300) return;
+
+    fetch('sesion.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ accion: 'guardar_tempo', pieza_id: piezaId, tempo: tempo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const msg = document.getElementById('tempoGuardadoMsg');
+            if (msg) {
+                msg.style.display = 'inline';
+                setTimeout(() => { msg.style.display = 'none'; }, 2000);
+            }
+        } else {
+            alert('Error al guardar el tempo: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(() => alert('Error de conexión al guardar el tempo.'));
 }
 <?php endif; ?>
 </script>

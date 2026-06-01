@@ -373,27 +373,148 @@ footer {
     margin-top: 2rem;
 }
 
+/* Metrónomo */
+.metronome-widget {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.metronome-widget h3 {
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    letter-spacing: 0.05em;
+    opacity: 0.9;
+    text-align: center;
+    border: none;
+}
+
+.metro-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.metro-control-group {
+    text-align: center;
+}
+
+.metro-control-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metro-btn-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    justify-content: center;
+}
+
+.metro-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: white;
+    min-width: 3.5rem;
+    display: inline-block;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+}
+
+.metro-beats-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: white;
+    min-width: 2rem;
+    display: inline-block;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+}
+
+.btn-metro {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 0.3rem 0.65rem;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-weight: 600;
+}
+
+.btn-metro:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.metro-beats-visual {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.75rem 0;
+    min-height: 20px;
+}
+
+.metro-beat-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: background 0.05s, transform 0.05s;
+    display: inline-block;
+}
+
+.metro-beat-dot.first-idle {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.metro-beat-dot.active {
+    background: #f39c12;
+    transform: scale(1.35);
+    box-shadow: 0 0 8px rgba(243, 156, 18, 0.7);
+}
+
+.metro-beat-dot.active-first {
+    background: #e74c3c;
+    transform: scale(1.45);
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.8);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .nav-menu {
         display: block;
         margin-top: 1rem;
     }
-    
+
     .nav-menu li {
         display: block;
         margin: 0.5rem 0;
     }
-    
+
     .form-inline {
         flex-direction: column;
     }
-    
+
     .timer-controls {
         flex-direction: column;
     }
-    
+
     .timer-controls .btn {
         width: 100%;
+    }
+
+    .metro-controls-row {
+        gap: 1rem;
     }
 }
