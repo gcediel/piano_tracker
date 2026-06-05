@@ -57,18 +57,6 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 echo json_encode(['success' => true]);
                 break;
 
-            case 'guardar_programa_midi':
-                $piezaId = intval($input['pieza_id']);
-                $programa = intval($input['programa_midi']);
-                if ($piezaId < 1 || $programa < 0 || $programa > 127) {
-                    echo json_encode(['success' => false, 'error' => 'Datos inválidos']);
-                    break;
-                }
-                $stmt = $db->prepare("UPDATE piezas SET programa_midi = :programa WHERE id = :id");
-                $stmt->execute([':programa' => $programa, ':id' => $piezaId]);
-                echo json_encode(['success' => true]);
-                break;
-
             case 'completar_pieza':
                 $actividadId = $input['actividad_id'];
                 $piezaId = $input['pieza_id'];
@@ -104,7 +92,6 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                             'compositor' => $siguientePieza['compositor'],
                             'titulo' => $siguientePieza['titulo'],
                             'tempo' => $siguientePieza['tempo'],
-                            'programa_midi' => $siguientePieza['programa_midi'] ?? 0,
                         ]
                     ]);
                 } else {
@@ -224,7 +211,7 @@ if (isset($_GET['ver'])) {
     $sesionVer = $stmt->fetch();
     
     if ($sesionVer) {
-        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo, p.programa_midi
+        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo
                               FROM actividades a
                               LEFT JOIN piezas p ON a.pieza_id = p.id
                               WHERE a.sesion_id = :id
@@ -332,7 +319,7 @@ if (isset($_GET['sesion'])) {
     $sesion = $stmt->fetch();
     
     if ($sesion) {
-        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo, p.programa_midi
+        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo
                               FROM actividades a
                               LEFT JOIN piezas p ON a.pieza_id = p.id
                               WHERE a.sesion_id = :id
@@ -491,61 +478,6 @@ include 'includes/header.php';
                     <span id="tempoGuardadoMsg" style="font-size: 0.85rem; color: #2ecc71; display: none;">✓ Guardado</span>
                 </div>
                 <?php endif; ?>
-                <?php if ($actividadActual['tipo'] === 'repertorio'): ?>
-                <?php
-                $gmInstrumentosSession = [
-                    0=>'Acoustic Grand Piano',1=>'Bright Acoustic Piano',2=>'Electric Grand Piano',3=>'Honky-tonk Piano',
-                    4=>'Electric Piano 1',5=>'Electric Piano 2',6=>'Harpsichord',7=>'Clavinet',
-                    8=>'Celesta',9=>'Glockenspiel',10=>'Music Box',11=>'Vibraphone',
-                    12=>'Marimba',13=>'Xylophone',14=>'Tubular Bells',15=>'Dulcimer',
-                    16=>'Drawbar Organ',17=>'Percussive Organ',18=>'Rock Organ',19=>'Church Organ',
-                    20=>'Reed Organ',21=>'Accordion',22=>'Harmonica',23=>'Tango Accordion',
-                    24=>'Nylon Guitar',25=>'Steel Guitar',26=>'Jazz Guitar',27=>'Clean Guitar',
-                    28=>'Muted Guitar',29=>'Overdriven Guitar',30=>'Distortion Guitar',31=>'Guitar Harmonics',
-                    32=>'Acoustic Bass',33=>'Finger Bass',34=>'Pick Bass',35=>'Fretless Bass',
-                    36=>'Slap Bass 1',37=>'Slap Bass 2',38=>'Synth Bass 1',39=>'Synth Bass 2',
-                    40=>'Violin',41=>'Viola',42=>'Cello',43=>'Contrabass',
-                    44=>'Tremolo Strings',45=>'Pizzicato Strings',46=>'Orchestral Harp',47=>'Timpani',
-                    48=>'String Ensemble 1',49=>'String Ensemble 2',50=>'Synth Strings 1',51=>'Synth Strings 2',
-                    52=>'Choir Aahs',53=>'Voice Oohs',54=>'Synth Choir',55=>'Orchestra Hit',
-                    56=>'Trumpet',57=>'Trombone',58=>'Tuba',59=>'Muted Trumpet',
-                    60=>'French Horn',61=>'Brass Section',62=>'Synth Brass 1',63=>'Synth Brass 2',
-                    64=>'Soprano Sax',65=>'Alto Sax',66=>'Tenor Sax',67=>'Baritone Sax',
-                    68=>'Oboe',69=>'English Horn',70=>'Bassoon',71=>'Clarinet',
-                    72=>'Piccolo',73=>'Flute',74=>'Recorder',75=>'Pan Flute',
-                    76=>'Blown Bottle',77=>'Shakuhachi',78=>'Whistle',79=>'Ocarina',
-                    80=>'Lead 1 (square)',81=>'Lead 2 (sawtooth)',82=>'Lead 3 (calliope)',83=>'Lead 4 (chiff)',
-                    84=>'Lead 5 (charang)',85=>'Lead 6 (voice)',86=>'Lead 7 (fifths)',87=>'Lead 8 (bass+lead)',
-                    88=>'Pad 1 (new age)',89=>'Pad 2 (warm)',90=>'Pad 3 (polysynth)',91=>'Pad 4 (choir)',
-                    92=>'Pad 5 (bowed)',93=>'Pad 6 (metallic)',94=>'Pad 7 (halo)',95=>'Pad 8 (sweep)',
-                    96=>'FX 1 (rain)',97=>'FX 2 (soundtrack)',98=>'FX 3 (crystal)',99=>'FX 4 (atmosphere)',
-                    100=>'FX 5 (brightness)',101=>'FX 6 (goblins)',102=>'FX 7 (echoes)',103=>'FX 8 (sci-fi)',
-                    104=>'Sitar',105=>'Banjo',106=>'Shamisen',107=>'Koto',
-                    108=>'Kalimba',109=>'Bag pipe',110=>'Fiddle',111=>'Shanai',
-                    112=>'Tinkle Bell',113=>'Agogo',114=>'Steel Drums',115=>'Woodblock',
-                    116=>'Taiko Drum',117=>'Melodic Tom',118=>'Synth Drum',119=>'Reverse Cymbal',
-                    120=>'Guitar Fret Noise',121=>'Breath Noise',122=>'Seashore',123=>'Bird Tweet',
-                    124=>'Telephone Ring',125=>'Helicopter',126=>'Applause',127=>'Gunshot',
-                ];
-                $programaActual = $actividadActual['programa_midi'] ?? 0;
-                ?>
-                <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">
-                    <span style="color: rgba(255,255,255,0.85); font-size: 0.95rem;">Tono:</span>
-                    <select id="programaMidiSelect"
-                            onchange="programaMidiChanged(this.value)"
-                            style="padding: 0.4rem; border-radius: 4px; border: none; font-size: 0.9rem; max-width: 220px; touch-action: manipulation;">
-                        <?php foreach ($gmInstrumentosSession as $num => $nombre): ?>
-                        <option value="<?php echo $num; ?>" <?php if ($programaActual == $num): ?>selected<?php endif; ?>>
-                            <?php echo $num; ?> – <?php echo htmlspecialchars($nombre); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <button onclick="guardarProgramaMidi()" class="btn btn-small btn-primary" style="touch-action: manipulation;">
-                        💾 Guardar tono
-                    </button>
-                    <span id="tonoGuardadoMsg" style="font-size: 0.85rem; color: #2ecc71; display: none;">✓ Guardado</span>
-                </div>
-                <?php endif; ?>
             </div>
             <h2 id="timerTime">00:00:00</h2>
             
@@ -566,21 +498,17 @@ include 'includes/header.php';
             
             <!-- Botones para actividades normales -->
             <div class="timer-controls" id="controlesNormales" style="<?php echo $actividadActual['tipo'] === 'repertorio' ? 'display:none;' : ''; ?>">
-                <?php if (!$hayActividadesCompletadas): ?>
-                <button id="btnIniciar" class="btn btn-success" onclick="iniciarTimer()">Iniciar</button>
-                <?php endif; ?>
+                <button id="btnIniciar" class="btn btn-success" onclick="iniciarTimer()" style="<?php echo $hayActividadesCompletadas ? 'display:none;' : ''; ?>"><?php echo $hayActividadesCompletadas ? 'Reanudar' : 'Iniciar'; ?></button>
                 <button id="btnPausar" class="btn btn-warning" onclick="pausarTimer()" style="display:none;">Pausar</button>
                 <?php if (!$esUltimaActividad): ?>
                 <button id="btnSiguiente" class="btn btn-primary" onclick="siguienteActividad()">Siguiente actividad</button>
                 <?php endif; ?>
                 <button id="btnFinalizar" class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
             </div>
-            
+
             <!-- Botones específicos para Repertorio -->
             <div class="timer-controls" id="controlesRepertorio" style="<?php echo $actividadActual['tipo'] !== 'repertorio' ? 'display:none;' : ''; ?>">
-                <?php if (!$hayActividadesCompletadas): ?>
-                <button id="btnIniciarRep" class="btn btn-success" onclick="iniciarTimer()">Iniciar</button>
-                <?php endif; ?>
+                <button id="btnIniciarRep" class="btn btn-success" onclick="iniciarTimer()" style="<?php echo $hayActividadesCompletadas ? 'display:none;' : ''; ?>"><?php echo $hayActividadesCompletadas ? 'Reanudar' : 'Iniciar'; ?></button>
                 <button id="btnPausarRep" class="btn btn-warning" onclick="pausarTimer()" style="display:none;">Pausar</button>
                 <button id="btnCompletarPieza" class="btn btn-primary" onclick="completarPieza()">✓ Pieza completada - Siguiente</button>
                 <?php if (!$esUltimaActividad): ?>
@@ -602,16 +530,6 @@ include 'includes/header.php';
 
         <!-- Metrónomo -->
         <div class="metronome-widget">
-            <div id="midiDeviceRow" style="display:none; margin-bottom:0.75rem; padding-bottom:0.75rem; border-bottom:1px solid rgba(255,255,255,0.2);">
-                <div class="metro-control-label" style="margin-bottom:0.4rem;">Puerto MIDI</div>
-                <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
-                    <select id="midiOutputSelect" onchange="midiSelectOutput(this.value)"
-                            style="padding:0.4rem 0.5rem; border-radius:6px; border:none; font-size:0.85rem; max-width:220px; touch-action:manipulation;">
-                        <option value="">— Sin dispositivo —</option>
-                    </select>
-                    <span id="midiStatus" style="font-size:0.8rem; color:rgba(255,255,255,0.6);">No disponible</span>
-                </div>
-            </div>
             <h3>♩ Metrónomo</h3>
             <div class="metro-controls-row">
                 <div class="metro-control-group">
@@ -658,7 +576,6 @@ include 'includes/header.php';
         <input type="hidden" id="piezaId" value="<?php echo $actividadActual['pieza_id'] ?? ''; ?>">
         <input type="hidden" id="tiempoInicial" value="<?php echo $actividadActual['tiempo_segundos']; ?>">
         <input type="hidden" id="esUltimaActividad" value="<?php echo $esUltimaActividad ? '1' : '0'; ?>">
-        <input type="hidden" id="programaMidiActual" value="<?php echo $actividadActual['programa_midi'] ?? 0; ?>">
         <?php else: ?>
         <div class="alert alert-success">
             <strong>¡Sesión completada!</strong> Todas las actividades han sido finalizadas.
@@ -842,15 +759,9 @@ function iniciarTimer() {
     if (timerActivo) return;
 
     timerActivo = true;
-    const btnIniciar = document.getElementById('btnIniciar') || document.getElementById('btnIniciarRep');
-    const btnPausar = document.getElementById('btnPausar') || document.getElementById('btnPausarRep');
+    const { btnIniciar, btnPausar } = getBotonesTimer();
     if (btnIniciar) btnIniciar.style.display = 'none';
     if (btnPausar) btnPausar.style.display = 'inline-block';
-
-    <?php if ($actividadActual['tipo'] === 'repertorio'): ?>
-    // Enviar Program Change MIDI al iniciar
-    midiSendProgramChange(parseInt(document.getElementById('programaMidiActual').value) || 0);
-    <?php endif; ?>
 
     // Marcar actividad como en curso
     fetch('sesion.php', {
@@ -864,11 +775,11 @@ function iniciarTimer() {
             actividad_id: document.getElementById('actividadId').value
         })
     });
-    
+
     timerInterval = setInterval(() => {
         tiempoActual++;
         actualizarDisplay();
-        
+
         // Guardar cada 5 segundos
         if (tiempoActual % 5 === 0) {
             guardarTiempo();
@@ -878,15 +789,25 @@ function iniciarTimer() {
 
 function pausarTimer() {
     if (!timerActivo) return;
-    
+
     timerActivo = false;
-    const btnIniciar = document.getElementById('btnIniciar') || document.getElementById('btnIniciarRep');
-    const btnPausar = document.getElementById('btnPausar') || document.getElementById('btnPausarRep');
-    if (btnIniciar) btnIniciar.style.display = 'inline-block';
+    const { btnIniciar, btnPausar } = getBotonesTimer();
+    if (btnIniciar) {
+        btnIniciar.textContent = 'Reanudar';
+        btnIniciar.style.display = 'inline-block';
+    }
     if (btnPausar) btnPausar.style.display = 'none';
-    
+
     clearInterval(timerInterval);
     guardarTiempo();
+}
+
+function getBotonesTimer() {
+    const esRepertorio = document.getElementById('controlesRepertorio').style.display !== 'none';
+    return {
+        btnIniciar: esRepertorio ? document.getElementById('btnIniciarRep') : document.getElementById('btnIniciar'),
+        btnPausar: esRepertorio ? document.getElementById('btnPausarRep') : document.getElementById('btnPausar')
+    };
 }
 
 function guardarTiempo() {
@@ -996,13 +917,6 @@ function completarPieza() {
             if (data.siguiente_pieza.tempo) {
                 metronomeSetBpm(data.siguiente_pieza.tempo);
             }
-            if (data.siguiente_pieza.programa_midi !== undefined) {
-                document.getElementById('programaMidiActual').value = data.siguiente_pieza.programa_midi;
-                const sel = document.getElementById('programaMidiSelect');
-                if (sel) sel.value = data.siguiente_pieza.programa_midi;
-                midiSendProgramChange(data.siguiente_pieza.programa_midi);
-            }
-
             piezasCompletadas++;
             document.getElementById('piezasTocadas').textContent = 'Piezas completadas: ' + piezasCompletadas;
             
@@ -1349,134 +1263,6 @@ function guardarTempoPieza() {
     .catch(() => alert('Error de conexión al guardar el tempo.'));
 }
 
-// === MIDI ===
-const GM_INSTRUMENTS = [
-    'Acoustic Grand Piano','Bright Acoustic Piano','Electric Grand Piano','Honky-tonk Piano',
-    'Electric Piano 1','Electric Piano 2','Harpsichord','Clavinet',
-    'Celesta','Glockenspiel','Music Box','Vibraphone',
-    'Marimba','Xylophone','Tubular Bells','Dulcimer',
-    'Drawbar Organ','Percussive Organ','Rock Organ','Church Organ',
-    'Reed Organ','Accordion','Harmonica','Tango Accordion',
-    'Nylon Guitar','Steel Guitar','Jazz Guitar','Clean Guitar',
-    'Muted Guitar','Overdriven Guitar','Distortion Guitar','Guitar Harmonics',
-    'Acoustic Bass','Finger Bass','Pick Bass','Fretless Bass',
-    'Slap Bass 1','Slap Bass 2','Synth Bass 1','Synth Bass 2',
-    'Violin','Viola','Cello','Contrabass',
-    'Tremolo Strings','Pizzicato Strings','Orchestral Harp','Timpani',
-    'String Ensemble 1','String Ensemble 2','Synth Strings 1','Synth Strings 2',
-    'Choir Aahs','Voice Oohs','Synth Choir','Orchestra Hit',
-    'Trumpet','Trombone','Tuba','Muted Trumpet',
-    'French Horn','Brass Section','Synth Brass 1','Synth Brass 2',
-    'Soprano Sax','Alto Sax','Tenor Sax','Baritone Sax',
-    'Oboe','English Horn','Bassoon','Clarinet',
-    'Piccolo','Flute','Recorder','Pan Flute',
-    'Blown Bottle','Shakuhachi','Whistle','Ocarina',
-    'Lead 1 (square)','Lead 2 (sawtooth)','Lead 3 (calliope)','Lead 4 (chiff)',
-    'Lead 5 (charang)','Lead 6 (voice)','Lead 7 (fifths)','Lead 8 (bass+lead)',
-    'Pad 1 (new age)','Pad 2 (warm)','Pad 3 (polysynth)','Pad 4 (choir)',
-    'Pad 5 (bowed)','Pad 6 (metallic)','Pad 7 (halo)','Pad 8 (sweep)',
-    'FX 1 (rain)','FX 2 (soundtrack)','FX 3 (crystal)','FX 4 (atmosphere)',
-    'FX 5 (brightness)','FX 6 (goblins)','FX 7 (echoes)','FX 8 (sci-fi)',
-    'Sitar','Banjo','Shamisen','Koto',
-    'Kalimba','Bag pipe','Fiddle','Shanai',
-    'Tinkle Bell','Agogo','Steel Drums','Woodblock',
-    'Taiko Drum','Melodic Tom','Synth Drum','Reverse Cymbal',
-    'Guitar Fret Noise','Breath Noise','Seashore','Bird Tweet',
-    'Telephone Ring','Helicopter','Applause','Gunshot'
-];
-
-let midiAccess = null;
-let midiOutput = null;
-
-async function midiInit() {
-    if (!navigator.requestMIDIAccess) return;
-    try {
-        midiAccess = await navigator.requestMIDIAccess();
-        midiPopulateOutputs();
-        midiAccess.onstatechange = () => midiPopulateOutputs();
-        document.getElementById('midiDeviceRow').style.display = 'block';
-    } catch(e) {
-        console.log('MIDI no disponible:', e);
-    }
-}
-
-function midiPopulateOutputs() {
-    const sel = document.getElementById('midiOutputSelect');
-    const savedId = localStorage.getItem('midi_output_id');
-    sel.innerHTML = '<option value="">— Sin dispositivo —</option>';
-    midiOutput = null;
-
-    midiAccess.outputs.forEach(output => {
-        const opt = document.createElement('option');
-        opt.value = output.id;
-        opt.textContent = output.name;
-        if (output.id === savedId) {
-            opt.selected = true;
-            midiOutput = output;
-        }
-        sel.appendChild(opt);
-    });
-
-    const status = document.getElementById('midiStatus');
-    if (midiOutput) {
-        status.textContent = '✓ Conectado';
-        status.style.color = '#2ecc71';
-    } else {
-        status.textContent = midiAccess.outputs.size > 0 ? 'Selecciona dispositivo' : 'Sin dispositivos';
-        status.style.color = 'rgba(255,255,255,0.6)';
-    }
-}
-
-function midiSelectOutput(id) {
-    localStorage.setItem('midi_output_id', id);
-    midiOutput = id ? midiAccess.outputs.get(id) : null;
-    const status = document.getElementById('midiStatus');
-    if (midiOutput) {
-        status.textContent = '✓ Conectado';
-        status.style.color = '#2ecc71';
-    } else {
-        status.textContent = 'Sin dispositivo seleccionado';
-        status.style.color = 'rgba(255,255,255,0.6)';
-    }
-}
-
-function midiSendProgramChange(program) {
-    if (!midiOutput) return;
-    const prog = Math.max(0, Math.min(127, parseInt(program) || 0));
-    midiOutput.send([0xC0, prog]);
-}
-
-function programaMidiChanged(val) {
-    midiSendProgramChange(parseInt(val));
-}
-
-function guardarProgramaMidi() {
-    const sel = document.getElementById('programaMidiSelect');
-    const piezaId = document.getElementById('piezaId').value;
-    if (!sel || !piezaId) return;
-
-    const programa = parseInt(sel.value);
-
-    fetch('sesion.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ accion: 'guardar_programa_midi', pieza_id: piezaId, programa_midi: programa })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('programaMidiActual').value = programa;
-            midiSendProgramChange(programa);
-            const msg = document.getElementById('tonoGuardadoMsg');
-            msg.style.display = 'inline';
-            setTimeout(() => { msg.style.display = 'none'; }, 2000);
-        } else {
-            alert('Error al guardar el tono: ' + (data.error || 'Desconocido'));
-        }
-    });
-}
-
-midiInit();
 <?php endif; ?>
 </script>
 
