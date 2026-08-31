@@ -175,16 +175,24 @@ function evaluarProgresionMensual($db) {
             // que el mes cuente y no baste una sesión suelta con suerte).
             $cuentaMes = $media <= UMBRAL_FALLOS_GRADUACION && $dias >= DIAS_MINIMOS_GRADUACION;
             $meses = $cuentaMes ? $pieza['meses_objetivo_consecutivos'] + 1 : 0;
-            $graduar = $meses >= MESES_PARA_GRADUACION;
-            $stmt2 = $db->prepare("
-                UPDATE piezas SET mes_evaluado = :mes, meses_objetivo_consecutivos = :meses,
-                                   sugerencia_graduacion_pendiente = :grad
-                WHERE id = :id
-            ");
-            $stmt2->execute([
-                ':mes' => $primerDiaMesAnterior, ':meses' => $meses,
-                ':grad' => $graduar ? 1 : 0, ':id' => $pieza['id']
-            ]);
+
+            if ($meses >= MESES_PARA_GRADUACION) {
+                // Alcanzado el umbral: se aplica directamente el paso a mantenimiento
+                // (mismo cambio que el botón manual "A mantenimiento" de repertorio.php);
+                // el aviso solo informa de que ya ha ocurrido, no pide confirmación.
+                $stmt2 = $db->prepare("
+                    UPDATE piezas SET mes_evaluado = :mes, estado = 'mantenimiento',
+                                       meses_objetivo_consecutivos = 0, aviso_graduacion_pendiente = 1
+                    WHERE id = :id
+                ");
+                $stmt2->execute([':mes' => $primerDiaMesAnterior, ':id' => $pieza['id']]);
+            } else {
+                $stmt2 = $db->prepare("
+                    UPDATE piezas SET mes_evaluado = :mes, meses_objetivo_consecutivos = :meses
+                    WHERE id = :id
+                ");
+                $stmt2->execute([':mes' => $primerDiaMesAnterior, ':meses' => $meses, ':id' => $pieza['id']]);
+            }
         } else {
             $stmt2 = $db->prepare("
                 UPDATE piezas SET mes_evaluado = :mes, meses_objetivo_consecutivos = 0
@@ -216,7 +224,7 @@ function revisarDemocionMantenimiento($db, $piezaId) {
 
     $sql = "UPDATE piezas SET estado = 'aprendizaje', meses_objetivo_consecutivos = 0,
                                mes_evaluado = NULL, sugerencia_tempo_pendiente = NULL,
-                               sugerencia_graduacion_pendiente = 0";
+                               aviso_graduacion_pendiente = 0";
     $params = [':id' => $piezaId];
     if ($pieza && $pieza['tempo_objetivo']) {
         $sql .= ", tempo = :tempo";

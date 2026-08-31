@@ -10,11 +10,12 @@ $db = getDB();
 // tengan ese mes marcado como evaluado.
 evaluarProgresionMensual($db);
 
-// Sugerencias pendientes de confirmar por el usuario
+// Sugerencias de tempo pendientes de confirmar, y avisos de graduación a
+// mantenimiento ya aplicada (ver evaluarProgresionMensual)
 $stmt = $db->query("
-    SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, sugerencia_graduacion_pendiente
+    SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, aviso_graduacion_pendiente
     FROM piezas
-    WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR sugerencia_graduacion_pendiente = 1)
+    WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR aviso_graduacion_pendiente = 1)
     ORDER BY compositor, titulo
 ");
 $sugerenciasPendientes = $stmt->fetchAll();
@@ -204,13 +205,12 @@ include 'includes/header.php';
             </span>
         </div>
         <?php endif; ?>
-        <?php if ($s['sugerencia_graduacion_pendiente']): ?>
+        <?php if ($s['aviso_graduacion_pendiente']): ?>
         <div class="alert alert-info" id="sugerencia-grad-<?php echo $s['id']; ?>" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
-            <span>🎹 <strong><?php echo htmlspecialchars($s['compositor'] . ' - ' . $s['titulo']); ?></strong>:
-                lleva varios meses en su tempo objetivo (<?php echo $s['tempo_objetivo']; ?> BPM) con pocos fallos. ¿Pasarla a repertorio de mantenimiento?</span>
+            <span>🛠 <strong><?php echo htmlspecialchars($s['compositor'] . ' - ' . $s['titulo']); ?></strong>:
+                ha mantenido pocos fallos varios meses en su tempo objetivo (<?php echo $s['tempo_objetivo']; ?> BPM) y se ha pasado a repertorio de mantenimiento.</span>
             <span>
-                <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_graduacion', <?php echo $s['id']; ?>, 'sugerencia-grad-<?php echo $s['id']; ?>')">✓ Pasar a mantenimiento</button>
-                <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_graduacion', <?php echo $s['id']; ?>, 'sugerencia-grad-<?php echo $s['id']; ?>')">Descartar</button>
+                <button class="btn btn-primary btn-small" onclick="responderSugerencia('descartar_graduacion', <?php echo $s['id']; ?>, 'sugerencia-grad-<?php echo $s['id']; ?>')">Entendido</button>
             </span>
         </div>
         <?php endif; ?>

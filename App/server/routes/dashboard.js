@@ -64,9 +64,9 @@ router.get('/', async (req, res) => {
     await h.evaluarProgresionMensual(pool);
 
     const [sugerenciasPendientes] = await pool.execute(`
-      SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, sugerencia_graduacion_pendiente
+      SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, aviso_graduacion_pendiente
       FROM piezas
-      WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR sugerencia_graduacion_pendiente = 1)
+      WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR aviso_graduacion_pendiente = 1)
       ORDER BY compositor, titulo
     `);
 

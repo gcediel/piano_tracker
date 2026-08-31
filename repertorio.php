@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($accion === 'marcar_mantenimiento') {
         try {
             $stmt = $db->prepare("UPDATE piezas SET estado = 'mantenimiento', meses_objetivo_consecutivos = 0,
-                                  sugerencia_graduacion_pendiente = 0 WHERE id = :id");
+                                  aviso_graduacion_pendiente = 0 WHERE id = :id");
             $stmt->execute([':id' => $_POST['id']]);
             $mensaje = 'Pieza marcada como mantenimiento';
         } catch (PDOException $e) {

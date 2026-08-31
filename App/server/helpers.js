@@ -236,11 +236,22 @@ async function evaluarProgresionMensual(pool) {
       // que el mes cuente y no baste una sesión suelta con suerte).
       const cuentaMes = media <= UMBRAL_FALLOS_GRADUACION && dias >= DIAS_MINIMOS_GRADUACION;
       const meses = cuentaMes ? pieza.meses_objetivo_consecutivos + 1 : 0;
-      const graduar = meses >= MESES_PARA_GRADUACION;
-      await pool.execute(
-        `UPDATE piezas SET mes_evaluado = ?, meses_objetivo_consecutivos = ?, sugerencia_graduacion_pendiente = ? WHERE id = ?`,
-        [primerDiaMesAnterior, meses, graduar ? 1 : 0, pieza.id]
-      );
+
+      if (meses >= MESES_PARA_GRADUACION) {
+        // Alcanzado el umbral: se aplica directamente el paso a mantenimiento
+        // (mismo cambio que el botón manual "A mantenimiento" de repertorio);
+        // el aviso solo informa de que ya ha ocurrido, no pide confirmación.
+        await pool.execute(
+          `UPDATE piezas SET mes_evaluado = ?, estado = 'mantenimiento',
+             meses_objetivo_consecutivos = 0, aviso_graduacion_pendiente = 1 WHERE id = ?`,
+          [primerDiaMesAnterior, pieza.id]
+        );
+      } else {
+        await pool.execute(
+          `UPDATE piezas SET mes_evaluado = ?, meses_objetivo_consecutivos = ? WHERE id = ?`,
+          [primerDiaMesAnterior, meses, pieza.id]
+        );
+      }
     } else {
       await pool.execute(
         `UPDATE piezas SET mes_evaluado = ?, meses_objetivo_consecutivos = 0 WHERE id = ?`,
@@ -267,13 +278,13 @@ async function revisarDemocionMantenimiento(pool, piezaId) {
     const nuevoTempo = Math.max(20, pieza.tempo_objetivo - TEMPO_DEMOCION_MARGEN);
     await pool.execute(`
       UPDATE piezas SET estado='aprendizaje', meses_objetivo_consecutivos=0, mes_evaluado=NULL,
-        sugerencia_tempo_pendiente=NULL, sugerencia_graduacion_pendiente=0, tempo=?
+        sugerencia_tempo_pendiente=NULL, aviso_graduacion_pendiente=0, tempo=?
       WHERE id=?
     `, [nuevoTempo, piezaId]);
   } else {
     await pool.execute(`
       UPDATE piezas SET estado='aprendizaje', meses_objetivo_consecutivos=0, mes_evaluado=NULL,
-        sugerencia_tempo_pendiente=NULL, sugerencia_graduacion_pendiente=0
+        sugerencia_tempo_pendiente=NULL, aviso_graduacion_pendiente=0
       WHERE id=?
     `, [piezaId]);
   }

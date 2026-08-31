@@ -13,12 +13,11 @@
       </span>
     </div>
     <% } %>
-    <% if (s.sugerencia_graduacion_pendiente) { %>
+    <% if (s.aviso_graduacion_pendiente) { %>
     <div class="alert alert-info" id="sugerencia-grad-<%= s.id %>" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
-      <span>🎹 <strong><%= s.compositor %> — <%= s.titulo %></strong>: lleva varios meses en su tempo objetivo (<%= s.tempo_objetivo %> BPM) con pocos fallos. ¿Pasarla a repertorio de mantenimiento?</span>
+      <span>🛠 <strong><%= s.compositor %> — <%= s.titulo %></strong>: ha mantenido pocos fallos varios meses en su tempo objetivo (<%= s.tempo_objetivo %> BPM) y se ha pasado a repertorio de mantenimiento.</span>
       <span>
-        <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_graduacion', <%= s.id %>, 'sugerencia-grad-<%= s.id %>')">✓ Pasar a mantenimiento</button>
-        <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_graduacion', <%= s.id %>, 'sugerencia-grad-<%= s.id %>')">Descartar</button>
+        <button class="btn btn-primary btn-small" onclick="responderSugerencia('descartar_graduacion', <%= s.id %>, 'sugerencia-grad-<%= s.id %>')">Entendido</button>
       </span>
     </div>
     <% } %>

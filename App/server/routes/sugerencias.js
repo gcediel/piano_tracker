@@ -20,15 +20,10 @@ router.post('/', async (req, res) => {
         await pool.execute(`UPDATE piezas SET sugerencia_tempo_pendiente = NULL WHERE id = ?`, [piezaId]);
         return res.json({ success: true });
 
-      case 'aplicar_graduacion':
-        await pool.execute(
-          `UPDATE piezas SET estado = 'mantenimiento', sugerencia_graduacion_pendiente = 0, meses_objetivo_consecutivos = 0 WHERE id = ?`,
-          [piezaId]
-        );
-        return res.json({ success: true });
-
       case 'descartar_graduacion':
-        await pool.execute(`UPDATE piezas SET sugerencia_graduacion_pendiente = 0 WHERE id = ?`, [piezaId]);
+        // La graduación a mantenimiento ya se aplicó automáticamente; esto solo
+        // descarta el aviso (ver evaluarProgresionMensual en helpers.js).
+        await pool.execute(`UPDATE piezas SET aviso_graduacion_pendiente = 0 WHERE id = ?`, [piezaId]);
         return res.json({ success: true });
 
       default:

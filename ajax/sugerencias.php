@@ -26,18 +26,10 @@ try {
             echo json_encode(['success' => true]);
             break;
 
-        case 'aplicar_graduacion':
-            $stmt = $db->prepare("
-                UPDATE piezas SET estado = 'mantenimiento', sugerencia_graduacion_pendiente = 0,
-                                   meses_objetivo_consecutivos = 0
-                WHERE id = :id
-            ");
-            $stmt->execute([':id' => $piezaId]);
-            echo json_encode(['success' => true]);
-            break;
-
         case 'descartar_graduacion':
-            $stmt = $db->prepare("UPDATE piezas SET sugerencia_graduacion_pendiente = 0 WHERE id = :id");
+            // La graduación a mantenimiento ya se aplicó automáticamente; esto solo
+            // descarta el aviso (ver evaluarProgresionMensual en includes/funciones.php).
+            $stmt = $db->prepare("UPDATE piezas SET aviso_graduacion_pendiente = 0 WHERE id = :id");
             $stmt->execute([':id' => $piezaId]);
             echo json_encode(['success' => true]);
             break;

@@ -43,7 +43,7 @@ router.post('/', async (req, res) => {
     }
 
     if (accion === 'marcar_mantenimiento') {
-      await pool.execute(`UPDATE piezas SET estado='mantenimiento', meses_objetivo_consecutivos=0, sugerencia_graduacion_pendiente=0 WHERE id=?`, [req.body.id]);
+      await pool.execute(`UPDATE piezas SET estado='mantenimiento', meses_objetivo_consecutivos=0, aviso_graduacion_pendiente=0 WHERE id=?`, [req.body.id]);
       mensaje = 'Pieza marcada como mantenimiento';
     }
 
