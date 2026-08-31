@@ -375,8 +375,8 @@ tbody tr:hover { background: #f8fbff; }
 .tone-picker-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 .tone-picker-group,
 .tone-picker-tone {
@@ -390,7 +390,7 @@ tbody tr:hover { background: #f8fbff; }
 }
 .tone-picker-tone:disabled { color: var(--gray); background: #f8f9fb; }
 
-.tone-picker-search-wrap { position: relative; margin-bottom: 0.5rem; }
+.tone-picker-search-wrap { position: relative; margin-bottom: 0.35rem; }
 .tone-picker-search {
   width: 100%;
   border: 1px solid var(--border);
