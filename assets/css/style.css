@@ -529,6 +529,37 @@ footer {
     justify-content: flex-end;
 }
 
+/* Modal de aviso: cambio de nivel de una pieza */
+.modal-aviso-box {
+    text-align: center;
+    border-top: 6px solid var(--dark);
+}
+.modal-aviso-box.aviso-subida {
+    border-top-color: #27ae60;
+}
+.modal-aviso-box.aviso-bajada {
+    border-top-color: #e67e22;
+}
+.modal-aviso-icono {
+    font-size: 3rem;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+.modal-aviso-titulo {
+    font-size: 1.3rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem !important;
+}
+.modal-aviso-pieza {
+    margin-bottom: 0.5rem !important;
+}
+.modal-aviso-niveles {
+    font-size: 1.1rem;
+}
+.modal-aviso-box .modal-actions {
+    justify-content: center;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .nav-menu {

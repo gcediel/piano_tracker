@@ -486,11 +486,12 @@ function completarPieza() {
         }
         piezasCompletadas++;
         document.getElementById('piezasTocadas').textContent = 'Piezas completadas: ' + piezasCompletadas;
+        if (data.cambio_nivel) mostrarAvisoNivel(data.cambio_nivel);
       } else if (data.success && !data.siguiente_pieza) {
         document.getElementById('piezaId').value = '';
         document.getElementById('fallos').value = 0;
-        alert('¡Has completado todas las piezas disponibles para esta sesión!');
-        terminarRepertorio();
+        const continuar = () => { alert('¡Has completado todas las piezas disponibles para esta sesión!'); terminarRepertorio(); };
+        if (data.cambio_nivel) mostrarAvisoNivel(data.cambio_nivel, continuar); else continuar();
       } else { alert('Error: ' + (data.error || 'No se pudo cargar la siguiente pieza')); }
     });
   });
@@ -504,8 +505,11 @@ function terminarRepertorio() {
   fetch('/sesion', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body:JSON.stringify({ accion:'terminar_repertorio', actividad_id: document.getElementById('actividadId').value, tiempo: tiempoActual, pieza_id: piezaId, fallos: parseInt(fallos), tipo_pasada: obtenerTipoPasada() }) })
     .then(r => r.json()).then(d => {
       if (d.success) {
-        if (d.hay_siguiente) location.reload();
-        else { document.getElementById('piezaId').value = ''; document.getElementById('fallos').value = 0; finalizarSesionInterno(true); }
+        const continuar = () => {
+          if (d.hay_siguiente) location.reload();
+          else { document.getElementById('piezaId').value = ''; document.getElementById('fallos').value = 0; finalizarSesionInterno(true); }
+        };
+        if (d.cambio_nivel) mostrarAvisoNivel(d.cambio_nivel, continuar); else continuar();
       }
     });
   });
@@ -519,8 +523,11 @@ function siguienteActividad() {
   fetch('/sesion', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body:JSON.stringify({ accion:'siguiente', actividad_id: document.getElementById('actividadId').value, tiempo: tiempoActual, pieza_id: piezaId, fallos, tipo_pasada: obtenerTipoPasada() }) })
     .then(r => r.json()).then(d => {
       if (d.success) {
-        if (d.hay_siguiente) location.reload();
-        else { document.getElementById('piezaId').value = ''; if (document.getElementById('fallos')) document.getElementById('fallos').value = 0; finalizarSesionInterno(true); }
+        const continuar = () => {
+          if (d.hay_siguiente) location.reload();
+          else { document.getElementById('piezaId').value = ''; if (document.getElementById('fallos')) document.getElementById('fallos').value = 0; finalizarSesionInterno(true); }
+        };
+        if (d.cambio_nivel) mostrarAvisoNivel(d.cambio_nivel, continuar); else continuar();
       }
     });
   });
@@ -537,7 +544,12 @@ function finalizarSesionInterno(auto) {
   const piezaId = document.getElementById('piezaId').value;
   const fallos  = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
   fetch('/sesion', { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body:JSON.stringify({ accion:'finalizar', sesion_id: document.getElementById('sesionId').value, actividad_id: document.getElementById('actividadId').value, tiempo: tiempoActual, pieza_id: piezaId, fallos, tipo_pasada: obtenerTipoPasada() }) })
-    .then(r => r.json()).then(d => { if (d.success) { if (auto) alert('✓ ¡Sesión completada!'); location.reload(); } });
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        const continuar = () => { if (auto) alert('✓ ¡Sesión completada!'); location.reload(); };
+        if (d.cambio_nivel) mostrarAvisoNivel(d.cambio_nivel, continuar); else continuar();
+      }
+    });
 }
 
 function actualizarDisplay() {

@@ -73,13 +73,14 @@ router.post('/', async (req, res, next) => {
         const { actividad_id, pieza_id, fallos, tiempo } = req.body;
         const tipoPasada = ['libre', 'metronomo'].includes(req.body.tipo_pasada) ? req.body.tipo_pasada : 'metronomo';
         await pool.execute(`UPDATE actividades SET tiempo_segundos=? WHERE id=?`, [tiempo, actividad_id]);
-        await h.registrarFallo(pool, actividad_id, pieza_id, fallos, tipoPasada);
+        const cambioNivel = await h.registrarFallo(pool, actividad_id, pieza_id, fallos, tipoPasada);
         const [piezasYaRows] = await pool.execute(`SELECT pieza_id FROM fallos WHERE actividad_id=?`, [actividad_id]);
         const piezasYa = piezasYaRows.map(r => r.pieza_id);
         const sig = await h.obtenerPiezaSugerida(pool, piezasYa);
         const tono = sig ? h.resolverTonoMidi(sig) : null;
         return res.json({
           success: true,
+          cambio_nivel: cambioNivel,
           siguiente_pieza: sig ? { id: sig.id, compositor: sig.compositor, titulo: sig.titulo, tempo: sig.tempo, estado: sig.estado, tono } : null,
         });
       }
@@ -89,27 +90,29 @@ router.post('/', async (req, res, next) => {
         const { actividad_id, tiempo, pieza_id, fallos } = req.body;
         const tipoPasada = ['libre', 'metronomo'].includes(req.body.tipo_pasada) ? req.body.tipo_pasada : 'metronomo';
         await pool.execute(`UPDATE actividades SET tiempo_segundos=? WHERE id=?`, [tiempo, actividad_id]);
+        let cambioNivel = null;
         if (pieza_id) {
-          await h.registrarFallo(pool, actividad_id, pieza_id, fallos || 0, tipoPasada);
+          cambioNivel = await h.registrarFallo(pool, actividad_id, pieza_id, fallos || 0, tipoPasada);
         }
         await pool.execute(`UPDATE actividades SET estado='completada', fecha_fin=NOW() WHERE id=?`, [actividad_id]);
         const [[row]] = await pool.execute(`SELECT sesion_id FROM actividades WHERE id=?`, [actividad_id]);
         const sesionId = row?.sesion_id;
         const [[{ n }]] = await pool.execute(`SELECT COUNT(*) AS n FROM actividades WHERE sesion_id=? AND estado IN ('pendiente','en_curso')`, [sesionId]);
-        return res.json({ success: true, hay_siguiente: n > 0 });
+        return res.json({ success: true, cambio_nivel: cambioNivel, hay_siguiente: n > 0 });
       }
 
       case 'finalizar': {
         const { sesion_id, actividad_id, tiempo, pieza_id, fallos } = req.body;
         const tipoPasada = ['libre', 'metronomo'].includes(req.body.tipo_pasada) ? req.body.tipo_pasada : 'metronomo';
         await pool.execute(`UPDATE actividades SET tiempo_segundos=? WHERE id=?`, [tiempo, actividad_id]);
+        let cambioNivel = null;
         if (pieza_id) {
-          await h.registrarFallo(pool, actividad_id, pieza_id, fallos || 0, tipoPasada);
+          cambioNivel = await h.registrarFallo(pool, actividad_id, pieza_id, fallos || 0, tipoPasada);
         }
         await pool.execute(`UPDATE actividades SET estado='completada', fecha_fin=NOW() WHERE id=?`, [actividad_id]);
         await pool.execute(`UPDATE actividades SET estado='completada' WHERE sesion_id=? AND estado='pendiente'`, [sesion_id]);
         await pool.execute(`UPDATE sesiones SET estado='finalizada' WHERE id=?`, [sesion_id]);
-        return res.json({ success: true });
+        return res.json({ success: true, cambio_nivel: cambioNivel });
       }
 
       default:

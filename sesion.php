@@ -94,19 +94,20 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
 
                 // Registrar fallos
-                registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
+                $cambioNivel = registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
 
                 // Obtener piezas ya practicadas en esta actividad
                 $stmt = $db->prepare("SELECT pieza_id FROM fallos WHERE actividad_id = :id");
                 $stmt->execute([':id' => $actividadId]);
                 $piezasYaSeleccionadas = $stmt->fetchAll(PDO::FETCH_COLUMN);
-                
+
                 // Obtener siguiente pieza
                 $siguientePieza = obtenerPiezaSugerida($db, $piezasYaSeleccionadas);
-                
+
                 if ($siguientePieza) {
                     echo json_encode([
                         'success' => true,
+                        'cambio_nivel' => $cambioNivel,
                         'siguiente_pieza' => [
                             'id' => $siguientePieza['id'],
                             'compositor' => $siguientePieza['compositor'],
@@ -118,7 +119,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 } else {
                     // No hay más piezas, devolver éxito pero sin siguiente
                     // Esto permitirá al frontend limpiar el piezaId
-                    echo json_encode(['success' => true, 'siguiente_pieza' => null]);
+                    echo json_encode(['success' => true, 'cambio_nivel' => $cambioNivel, 'siguiente_pieza' => null]);
                 }
                 break;
                 
@@ -135,34 +136,36 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
 
                 // Si hay pieza pendiente, registrar fallos
+                $cambioNivel = null;
                 if ($piezaId) {
-                    registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
+                    $cambioNivel = registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
                 }
 
                 // Marcar actividad como completada
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
                 $stmt->execute([':id' => $actividadId]);
-                
+
                 // Verificar si hay siguiente actividad
                 $stmt = $db->prepare("
-                    SELECT a.sesion_id 
-                    FROM actividades a 
+                    SELECT a.sesion_id
+                    FROM actividades a
                     WHERE a.id = :id
                 ");
                 $stmt->execute([':id' => $actividadId]);
                 $sesionId = $stmt->fetch()['sesion_id'];
-                
+
                 $stmt = $db->prepare("
-                    SELECT COUNT(*) as pendientes 
-                    FROM actividades 
-                    WHERE sesion_id = :sesion_id 
+                    SELECT COUNT(*) as pendientes
+                    FROM actividades
+                    WHERE sesion_id = :sesion_id
                     AND estado IN ('pendiente', 'en_curso')
                 ");
                 $stmt->execute([':sesion_id' => $sesionId]);
                 $hayPendientes = $stmt->fetch()['pendientes'] > 0;
-                
+
                 echo json_encode([
                     'success' => true,
+                    'cambio_nivel' => $cambioNivel,
                     'hay_siguiente' => $hayPendientes
                 ]);
                 break;
@@ -180,23 +183,24 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
 
                 // Si hay pieza pendiente, registrar fallos
+                $cambioNivel = null;
                 if ($piezaId) {
-                    registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
+                    $cambioNivel = registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
                 }
 
                 // Marcar actividad actual como completada
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
                 $stmt->execute([':id' => $actividadId]);
-                
+
                 // Marcar todas las actividades pendientes como completadas
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'completada' WHERE sesion_id = :id AND estado = 'pendiente'");
                 $stmt->execute([':id' => $sesionId]);
-                
+
                 // Marcar sesión como finalizada
                 $stmt = $db->prepare("UPDATE sesiones SET estado = 'finalizada' WHERE id = :id");
                 $stmt->execute([':id' => $sesionId]);
-                
-                echo json_encode(['success' => true]);
+
+                echo json_encode(['success' => true, 'cambio_nivel' => $cambioNivel]);
                 break;
                 
             default:
@@ -1135,14 +1139,25 @@ function completarPieza() {
             setTimeout(() => {
                 info.parentElement.style.background = originalBg;
             }, 1000);
-            
+
+            if (data.cambio_nivel) {
+                mostrarAvisoNivel(data.cambio_nivel);
+            }
+
         } else if (data.success && !data.siguiente_pieza) {
             // No hay más piezas - limpiar piezaId para evitar duplicación
             document.getElementById('piezaId').value = '';
             document.getElementById('fallos').value = 0;
-            
-            alert('¡Felicidades! Has completado todas las piezas disponibles en tu repertorio para esta sesión.');
-            terminarRepertorio();
+
+            const continuar = () => {
+                alert('¡Felicidades! Has completado todas las piezas disponibles en tu repertorio para esta sesión.');
+                terminarRepertorio();
+            };
+            if (data.cambio_nivel) {
+                mostrarAvisoNivel(data.cambio_nivel, continuar);
+            } else {
+                continuar();
+            }
         } else {
             alert('Error: ' + (data.error || 'No se pudo cargar la siguiente pieza'));
         }
@@ -1180,15 +1195,22 @@ function terminarRepertorio() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (data.hay_siguiente) {
-                location.reload();
+            const continuar = () => {
+                if (data.hay_siguiente) {
+                    location.reload();
+                } else {
+                    // Era la última actividad, limpiar campos y finalizar sesión automáticamente
+                    // IMPORTANTE: Limpiar piezaId y fallos ANTES de finalizar para evitar duplicación
+                    // La pieza ya fue registrada por terminar_repertorio, no debe volver a registrarse
+                    document.getElementById('piezaId').value = '';
+                    document.getElementById('fallos').value = 0;
+                    finalizarSesionInterno(true);
+                }
+            };
+            if (data.cambio_nivel) {
+                mostrarAvisoNivel(data.cambio_nivel, continuar);
             } else {
-                // Era la última actividad, limpiar campos y finalizar sesión automáticamente
-                // IMPORTANTE: Limpiar piezaId y fallos ANTES de finalizar para evitar duplicación
-                // La pieza ya fue registrada por terminar_repertorio, no debe volver a registrarse
-                document.getElementById('piezaId').value = '';
-                document.getElementById('fallos').value = 0;
-                finalizarSesionInterno(true);
+                continuar();
             }
         } else {
             alert('Error al finalizar repertorio: ' + (data.error || 'Desconocido'));
@@ -1224,16 +1246,23 @@ function siguienteActividad() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (data.hay_siguiente) {
-                location.reload();
-            } else {
-                // Era la última actividad, limpiar campos y finalizar sesión automáticamente
-                // IMPORTANTE: La pieza ya fue registrada por 'siguiente', limpiar para evitar duplicación
-                document.getElementById('piezaId').value = '';
-                if (document.getElementById('fallos')) {
-                    document.getElementById('fallos').value = 0;
+            const continuar = () => {
+                if (data.hay_siguiente) {
+                    location.reload();
+                } else {
+                    // Era la última actividad, limpiar campos y finalizar sesión automáticamente
+                    // IMPORTANTE: La pieza ya fue registrada por 'siguiente', limpiar para evitar duplicación
+                    document.getElementById('piezaId').value = '';
+                    if (document.getElementById('fallos')) {
+                        document.getElementById('fallos').value = 0;
+                    }
+                    finalizarSesionInterno(true);
                 }
-                finalizarSesionInterno(true);
+            };
+            if (data.cambio_nivel) {
+                mostrarAvisoNivel(data.cambio_nivel, continuar);
+            } else {
+                continuar();
             }
         } else {
             alert('Error al avanzar: ' + (data.error || 'Desconocido'));
@@ -1275,10 +1304,17 @@ function finalizarSesionInterno(autoFinalizado) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (autoFinalizado) {
-                alert('✓ ¡Sesión completada automáticamente! Has terminado todas las actividades.');
+            const continuar = () => {
+                if (autoFinalizado) {
+                    alert('✓ ¡Sesión completada automáticamente! Has terminado todas las actividades.');
+                }
+                location.reload();
+            };
+            if (data.cambio_nivel) {
+                mostrarAvisoNivel(data.cambio_nivel, continuar);
+            } else {
+                continuar();
             }
-            location.reload();
         } else {
             alert('Error al finalizar: ' + (data.error || 'Desconocido'));
         }

@@ -83,3 +83,67 @@
     }, true);
 }());
 </script>
+
+<!-- Modal de aviso: cambio de nivel de una pieza (subida o bajada) -->
+<div id="modal-aviso" class="modal-overlay" role="dialog" aria-modal="true">
+    <div id="modal-aviso-box" class="modal-box modal-aviso-box">
+        <div id="modal-aviso-icono" class="modal-aviso-icono"></div>
+        <p id="modal-aviso-titulo" class="modal-aviso-titulo"></p>
+        <p id="modal-aviso-pieza" class="modal-aviso-pieza"></p>
+        <p id="modal-aviso-niveles" class="modal-aviso-niveles"></p>
+        <div class="modal-actions">
+            <button id="modal-aviso-cerrar" class="btn btn-primary">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modal   = document.getElementById('modal-aviso');
+    var box     = document.getElementById('modal-aviso-box');
+    var icono   = document.getElementById('modal-aviso-icono');
+    var titulo  = document.getElementById('modal-aviso-titulo');
+    var pieza   = document.getElementById('modal-aviso-pieza');
+    var niveles = document.getElementById('modal-aviso-niveles');
+    var btnOk   = document.getElementById('modal-aviso-cerrar');
+    var pendienteCerrar = null;
+
+    function cerrar() {
+        modal.classList.remove('visible');
+        var fn = pendienteCerrar;
+        pendienteCerrar = null;
+        if (fn) fn();
+    }
+
+    // cambio: { pieza: {compositor, titulo}, direccion: 'sube'|'baja', anterior: {texto, color}, nuevo: {texto, color} }
+    // onCerrar: callback opcional que se ejecuta al cerrar el aviso (p.ej. para continuar con una recarga)
+    window.mostrarAvisoNivel = function (cambio, onCerrar) {
+        var subida = cambio.direccion === 'sube';
+        icono.textContent = subida ? '🎉' : '📉';
+        titulo.textContent = subida ? '¡Subida de nivel!' : 'Bajada de nivel';
+        box.classList.toggle('aviso-subida', subida);
+        box.classList.toggle('aviso-bajada', !subida);
+        pieza.textContent = cambio.pieza.compositor + ' - ' + cambio.pieza.titulo;
+
+        niveles.innerHTML = '';
+        var spanAntes = document.createElement('span');
+        spanAntes.textContent = cambio.anterior.texto;
+        spanAntes.style.color = cambio.anterior.color;
+        spanAntes.style.fontWeight = 'bold';
+        var spanDespues = document.createElement('span');
+        spanDespues.textContent = cambio.nuevo.texto;
+        spanDespues.style.color = cambio.nuevo.color;
+        spanDespues.style.fontWeight = 'bold';
+        niveles.appendChild(spanAntes);
+        niveles.appendChild(document.createTextNode(' → '));
+        niveles.appendChild(spanDespues);
+
+        pendienteCerrar = onCerrar || null;
+        modal.classList.add('visible');
+        btnOk.focus();
+    };
+
+    btnOk.addEventListener('click', cerrar);
+    modal.addEventListener('click', function (e) { if (e.target === modal) cerrar(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && modal.classList.contains('visible')) cerrar(); });
+}());
+</script>

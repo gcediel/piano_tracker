@@ -178,10 +178,12 @@ async function obtenerPiezaSugerida(pool, piezasYaSeleccionadas = []) {
 // ─── Progresión automática de tempo y mantenimiento (ver auditoria_pedagogica.md) ──
 
 const INCREMENTO_TEMPO_PROGRESION = 5;  // BPM sugeridos al subir tempo (rango acordado: 4-6)
-const MESES_PARA_GRADUACION = 3;        // meses consecutivos a tempo objetivo con media <=1 para pasar a mantenimiento
+const MESES_PARA_GRADUACION = 3;        // meses consecutivos cumpliendo el umbral de graduación para pasar a mantenimiento
 const TEMPO_DEMOCION_MARGEN = 8;        // BPM por debajo del tempo objetivo al volver de mantenimiento a aprendizaje
+const UMBRAL_FALLOS_GRADUACION = 0.25;  // media máxima de fallos/día para que un mes cuente hacia la graduación (no exige 0)
+const DIAS_MINIMOS_GRADUACION = 8;      // días mínimos practicados con metrónomo ese mes para que cuente (evita graduar por 1-2 sesiones sueltas)
 
-// Media de fallos "con metrónomo" de una pieza en el mes natural que empieza en primerDiaMes (string 'YYYY-MM-DD').
+// Media y días practicados "con metrónomo" de una pieza en el mes natural que empieza en primerDiaMes (string 'YYYY-MM-DD').
 // Devuelve null si no hay ningún día practicado ese mes.
 async function mediaFallosMetronomo(pool, piezaId, primerDiaMes) {
   const [y, m] = primerDiaMes.split('-').map(Number);
@@ -200,7 +202,7 @@ async function mediaFallosMetronomo(pool, piezaId, primerDiaMes) {
 
   const dias = parseInt(rows[0]?.dias_practicados) || 0;
   if (dias === 0) return null;
-  return (parseFloat(rows[0]?.total_fallos) || 0) / dias;
+  return { media: (parseFloat(rows[0]?.total_fallos) || 0) / dias, dias };
 }
 
 // Evalúa el mes natural anterior para cada pieza en aprendizaje con tempo objetivo
@@ -218,8 +220,9 @@ async function evaluarProgresionMensual(pool) {
   `, [primerDiaMesAnterior]);
 
   for (const pieza of piezas) {
-    const media = await mediaFallosMetronomo(pool, pieza.id, primerDiaMesAnterior);
-    if (media === null) continue; // sin datos ese mes: se reintenta en la próxima carga
+    const datosMes = await mediaFallosMetronomo(pool, pieza.id, primerDiaMesAnterior);
+    if (datosMes === null) continue; // sin datos ese mes: se reintenta en la próxima carga
+    const { media, dias } = datosMes;
 
     if (media <= 1 && pieza.tempo < pieza.tempo_objetivo) {
       const nuevoTempo = Math.min(pieza.tempo_objetivo, pieza.tempo + INCREMENTO_TEMPO_PROGRESION);
@@ -227,8 +230,12 @@ async function evaluarProgresionMensual(pool) {
         `UPDATE piezas SET mes_evaluado = ?, sugerencia_tempo_pendiente = ? WHERE id = ?`,
         [primerDiaMesAnterior, nuevoTempo, pieza.id]
       );
-    } else if (media <= 1 && pieza.tempo >= pieza.tempo_objetivo) {
-      const meses = pieza.meses_objetivo_consecutivos + 1;
+    } else if (pieza.tempo >= pieza.tempo_objetivo) {
+      // Graduación a mantenimiento: umbral más exigente que el de subir tempo
+      // (no hace falta 0 fallos, pero sí un mínimo de días practicados para
+      // que el mes cuente y no baste una sesión suelta con suerte).
+      const cuentaMes = media <= UMBRAL_FALLOS_GRADUACION && dias >= DIAS_MINIMOS_GRADUACION;
+      const meses = cuentaMes ? pieza.meses_objetivo_consecutivos + 1 : 0;
       const graduar = meses >= MESES_PARA_GRADUACION;
       await pool.execute(
         `UPDATE piezas SET mes_evaluado = ?, meses_objetivo_consecutivos = ?, sugerencia_graduacion_pendiente = ? WHERE id = ?`,
@@ -273,17 +280,63 @@ async function revisarDemocionMantenimiento(pool, piezaId) {
   return true;
 }
 
+// Nivel de "media de fallos/día" (últimos 30 días) según la leyenda de repertorio.
+// Devuelve null si media es null. rango: 0 (peor) a 5 (mejor).
+function nivelFallos(media) {
+  if (media === null || media === undefined) return null;
+  const m = parseFloat(media);
+  if (m < 0.5) return { rango: 5, texto: 'Excelente', color: '#2E5F8A' };
+  if (m < 1.5) return { rango: 4, texto: 'Muy bien', color: '#4A7BA7' };
+  if (m < 2.5) return { rango: 3, texto: 'Bien', color: '#A3C1DA' };
+  if (m < 3.5) return { rango: 2, texto: 'Aceptable', color: '#D4E89E' };
+  if (m <= 5)  return { rango: 1, texto: 'Mejorable', color: '#9B9B9B' };
+  return { rango: 0, texto: 'Atención', color: '#E57373' };
+}
+
+// Media de fallos/día de una pieza en los últimos 30 días (todo tipo de pasada),
+// igual que el listado de repertorio. Devuelve null si no hay días practicados.
+async function mediaFallosDia30(pool, piezaId) {
+  const [rows] = await pool.execute(`
+    SELECT
+      COUNT(DISTINCT DATE(f.fecha_registro)) AS dias,
+      COALESCE(SUM(f.cantidad), 0) AS total
+    FROM fallos f
+    WHERE f.pieza_id = ? AND f.fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+  `, [piezaId]);
+  const dias = parseInt(rows[0]?.dias) || 0;
+  if (dias === 0) return null;
+  return Math.round(((parseFloat(rows[0]?.total) || 0) / dias) * 100) / 100;
+}
+
 // Inserta un registro de fallos para una pieza y, si está en mantenimiento,
-// comprueba si debe volver a aprendizaje.
+// comprueba si debe volver a aprendizaje. Devuelve datos de cambio de nivel
+// (para celebrar/avisar en el frontend) si el nivel de "media de fallos/día
+// (30 días)" de la pieza cambia con este registro, o null si no hay datos
+// previos que comparar o el nivel no cambia.
 async function registrarFallo(pool, actividadId, piezaId, cantidad, tipoPasada) {
+  const nivelAntes = nivelFallos(await mediaFallosDia30(pool, piezaId));
+
   await pool.execute(
     `INSERT INTO fallos (actividad_id, pieza_id, cantidad, tipo_pasada, fecha_registro) VALUES (?,?,?,?,NOW())`,
     [actividadId, piezaId, cantidad, tipoPasada]
   );
-  const [[pieza]] = await pool.execute(`SELECT estado FROM piezas WHERE id = ?`, [piezaId]);
+  const [[pieza]] = await pool.execute(`SELECT compositor, titulo, estado FROM piezas WHERE id = ?`, [piezaId]);
   if (pieza && pieza.estado === 'mantenimiento') {
     await revisarDemocionMantenimiento(pool, piezaId);
   }
+
+  const nivelDespues = nivelFallos(await mediaFallosDia30(pool, piezaId));
+
+  if (!nivelAntes || !nivelDespues || nivelDespues.rango === nivelAntes.rango) {
+    return null;
+  }
+
+  return {
+    pieza: { compositor: pieza.compositor, titulo: pieza.titulo },
+    direccion: nivelDespues.rango > nivelAntes.rango ? 'sube' : 'baja',
+    anterior: nivelAntes,
+    nuevo: nivelDespues,
+  };
 }
 
 // ─── Color de fallos (devuelve color CSS) ────────────────────────────────────

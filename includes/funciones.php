@@ -110,10 +110,12 @@ function obtenerPiezaSugerida($db, $piezasYaSeleccionadas = []) {
 
 // Constantes de la progresión automática de tempo (ver auditoria_pedagogica.md)
 define('INCREMENTO_TEMPO_PROGRESION', 5);  // BPM sugeridos al subir tempo (rango acordado: 4-6)
-define('MESES_PARA_GRADUACION', 3);        // meses consecutivos a tempo objetivo con media <=1 para pasar a mantenimiento
+define('MESES_PARA_GRADUACION', 3);        // meses consecutivos cumpliendo el umbral de graduación para pasar a mantenimiento
 define('TEMPO_DEMOCION_MARGEN', 8);        // BPM por debajo del tempo objetivo al volver de mantenimiento a aprendizaje
+define('UMBRAL_FALLOS_GRADUACION', 0.25);  // media máxima de fallos/día para que un mes cuente hacia la graduación (no exige 0)
+define('DIAS_MINIMOS_GRADUACION', 8);      // días mínimos practicados con metrónomo ese mes para que cuente (evita graduar por 1-2 sesiones sueltas)
 
-// Media de fallos "con metrónomo" de una pieza en el mes natural que empieza en $primerDiaMes.
+// Media y días practicados "con metrónomo" de una pieza en el mes natural que empieza en $primerDiaMes.
 // Devuelve null si no hay ningún día practicado ese mes (aún no evaluable).
 function mediaFallosMetronomo($db, $piezaId, $primerDiaMes) {
     $fin = date('Y-m-d', strtotime($primerDiaMes . ' +1 month'));
@@ -133,7 +135,7 @@ function mediaFallosMetronomo($db, $piezaId, $primerDiaMes) {
     if ($dias === 0) {
         return null;
     }
-    return ($r['total_fallos'] ?? 0) / $dias;
+    return ['media' => ($r['total_fallos'] ?? 0) / $dias, 'dias' => $dias];
 }
 
 // Evalúa el mes natural anterior para cada pieza en aprendizaje con tempo objetivo
@@ -153,10 +155,12 @@ function evaluarProgresionMensual($db) {
     $piezas = $stmt->fetchAll();
 
     foreach ($piezas as $pieza) {
-        $media = mediaFallosMetronomo($db, $pieza['id'], $primerDiaMesAnterior);
-        if ($media === null) {
+        $datosMes = mediaFallosMetronomo($db, $pieza['id'], $primerDiaMesAnterior);
+        if ($datosMes === null) {
             continue; // sin datos ese mes: se reintenta en la próxima carga
         }
+        $media = $datosMes['media'];
+        $dias  = $datosMes['dias'];
 
         if ($media <= 1 && $pieza['tempo'] < $pieza['tempo_objetivo']) {
             $nuevoTempo = min($pieza['tempo_objetivo'], $pieza['tempo'] + INCREMENTO_TEMPO_PROGRESION);
@@ -165,8 +169,12 @@ function evaluarProgresionMensual($db) {
                 WHERE id = :id
             ");
             $stmt2->execute([':mes' => $primerDiaMesAnterior, ':nuevo' => $nuevoTempo, ':id' => $pieza['id']]);
-        } elseif ($media <= 1 && $pieza['tempo'] >= $pieza['tempo_objetivo']) {
-            $meses = $pieza['meses_objetivo_consecutivos'] + 1;
+        } elseif ($pieza['tempo'] >= $pieza['tempo_objetivo']) {
+            // Graduación a mantenimiento: umbral más exigente que el de subir tempo
+            // (no hace falta 0 fallos, pero sí un mínimo de días practicados para
+            // que el mes cuente y no baste una sesión suelta con suerte).
+            $cuentaMes = $media <= UMBRAL_FALLOS_GRADUACION && $dias >= DIAS_MINIMOS_GRADUACION;
+            $meses = $cuentaMes ? $pieza['meses_objetivo_consecutivos'] + 1 : 0;
             $graduar = $meses >= MESES_PARA_GRADUACION;
             $stmt2 = $db->prepare("
                 UPDATE piezas SET mes_evaluado = :mes, meses_objetivo_consecutivos = :meses,
@@ -220,9 +228,54 @@ function revisarDemocionMantenimiento($db, $piezaId) {
     return true;
 }
 
+// Nivel de "media de fallos/día" (últimos 30 días) según la leyenda de
+// repertorio.php. Devuelve null si $media es null. rango: 0 (peor) a 5 (mejor).
+function nivelFallos($media) {
+    if ($media === null) {
+        return null;
+    }
+    if ($media < 0.5) {
+        return ['rango' => 5, 'texto' => 'Excelente', 'color' => '#2E5F8A'];
+    } elseif ($media < 1.5) {
+        return ['rango' => 4, 'texto' => 'Muy bien', 'color' => '#4A7BA7'];
+    } elseif ($media < 2.5) {
+        return ['rango' => 3, 'texto' => 'Bien', 'color' => '#A3C1DA'];
+    } elseif ($media < 3.5) {
+        return ['rango' => 2, 'texto' => 'Aceptable', 'color' => '#D4E89E'];
+    } elseif ($media <= 5) {
+        return ['rango' => 1, 'texto' => 'Mejorable', 'color' => '#9B9B9B'];
+    }
+    return ['rango' => 0, 'texto' => 'Atención', 'color' => '#E57373'];
+}
+
+// Media de fallos/día de una pieza en los últimos 30 días (todo tipo de pasada),
+// igual que el listado de repertorio.php. Devuelve null si no hay días practicados.
+function mediaFallosDia30($db, $piezaId) {
+    $fechaLimite = date('Y-m-d', strtotime('-30 days'));
+    $stmt = $db->prepare("
+        SELECT
+            COUNT(DISTINCT DATE(f.fecha_registro)) as dias,
+            SUM(f.cantidad) as total
+        FROM fallos f
+        WHERE f.pieza_id = :pieza_id AND f.fecha_registro >= :fecha_limite
+    ");
+    $stmt->execute([':pieza_id' => $piezaId, ':fecha_limite' => $fechaLimite]);
+    $r = $stmt->fetch();
+    $dias = (int)($r['dias'] ?? 0);
+    if ($dias === 0) {
+        return null;
+    }
+    return round(($r['total'] ?? 0) / $dias, 2);
+}
+
 // Inserta un registro de fallos para una pieza y, si está en mantenimiento,
 // comprueba si debe volver a aprendizaje (ver revisarDemocionMantenimiento).
+// Devuelve datos de cambio de nivel (para celebrar/avisar en el frontend) si el
+// nivel de "media de fallos/día (30 días)" de la pieza cambia con este registro,
+// o null si no hay datos previos que comparar o el nivel no cambia.
 function registrarFallo($db, $actividadId, $piezaId, $cantidad, $tipoPasada) {
+    $nivelAntes = nivelFallos(mediaFallosDia30($db, $piezaId));
+
     $stmt = $db->prepare("
         INSERT INTO fallos (actividad_id, pieza_id, cantidad, tipo_pasada, fecha_registro)
         VALUES (:act_id, :pieza_id, :cantidad, :tipo_pasada, NOW())
@@ -239,4 +292,21 @@ function registrarFallo($db, $actividadId, $piezaId, $cantidad, $tipoPasada) {
     if ($stmt2->fetchColumn() === 'mantenimiento') {
         revisarDemocionMantenimiento($db, $piezaId);
     }
+
+    $nivelDespues = nivelFallos(mediaFallosDia30($db, $piezaId));
+
+    if ($nivelAntes === null || $nivelDespues === null || $nivelDespues['rango'] === $nivelAntes['rango']) {
+        return null;
+    }
+
+    $stmt3 = $db->prepare("SELECT compositor, titulo FROM piezas WHERE id = :id");
+    $stmt3->execute([':id' => $piezaId]);
+    $pieza = $stmt3->fetch();
+
+    return [
+        'pieza' => ['compositor' => $pieza['compositor'], 'titulo' => $pieza['titulo']],
+        'direccion' => $nivelDespues['rango'] > $nivelAntes['rango'] ? 'sube' : 'baja',
+        'anterior' => $nivelAntes,
+        'nuevo' => $nivelDespues,
+    ];
 }
