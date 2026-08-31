@@ -1,0 +1,295 @@
+<%- include('partials/header') %>
+
+<div class="card">
+  <h2>🎛️ Roland GO:KEYS — Control en vivo</h2>
+  <p style="color:var(--gray);">
+    Selecciona el tono y ajusta los efectos del sintetizador conectado en tiempo real, vía MIDI (canal 4, el canal de recepción fijo del GO:KEYS).
+    Los cambios se envían al instante mientras mueves los controles.
+  </p>
+  <div class="roland-status-bar">
+    <span class="roland-dot" id="rolandDot"></span>
+    <span id="rolandStatusText" style="font-size:0.9rem;color:var(--gray);">Sin conectar</span>
+    <select id="midiOutputSelect" onchange="midiSelectOutput(this.value)" style="max-width:220px;">
+      <option value="">— Salida (Roland) —</option>
+    </select>
+    <select id="midiInputSelect" onchange="midiSelectInput(this.value)" style="max-width:220px;">
+      <option value="">— Entrada (teclado, opcional) —</option>
+    </select>
+    <button class="btn btn-small btn-primary" onclick="midiRetry()">Reintentar conexión</button>
+  </div>
+  <div id="midiErrorArea" style="display:none;margin-top:0.75rem;">
+    <p style="color:var(--danger);font-size:0.88rem;" id="midiErrorText"></p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎹 Tono (<span id="toneCountLabel">1228</span> disponibles)</h2>
+  <%- include('partials/tone_picker', {
+    idPrefix: 'rolandTonePicker', fieldPrefix: 'rolandTono',
+    initial: {},
+    onSelectJs: "rolandSelectTone(midiOutput, t); saveLastTone(t);"
+  }) %>
+</div>
+
+<div class="card">
+  <h2>⭐ Presets</h2>
+  <p style="color:var(--gray);font-size:0.85rem;">
+    Guarda hasta 10 sonidos favoritos para recuperarlos con un clic, sin tener que rebuscarlos en la lista.
+    Elige un tono arriba y pulsa 💾 en la casilla donde quieras guardarlo.
+  </p>
+  <div class="roland-presets-grid" id="rolandPresetsGrid"></div>
+</div>
+
+<div class="card">
+  <h2>🔊 Mezcla</h2>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Volumen</span><span class="effect-control-value" id="val_vol">100</span></div>
+      <input type="range" min="0" max="127" value="100" oninput="ccChange('vol', 7, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Expresión</span><span class="effect-control-value" id="val_expr">127</span></div>
+      <input type="range" min="0" max="127" value="127" oninput="ccChange('expr', 11, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Panorama</span><span class="effect-control-value" id="val_pan">Centro</span></div>
+      <input type="range" min="0" max="127" value="64" oninput="ccChangePan(this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Modulación</span><span class="effect-control-value" id="val_mod">0</span></div>
+      <input type="range" min="0" max="127" value="0" oninput="ccChange('mod', 1, this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🌊 Reverb &amp; Chorus</h2>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Reverb (envío)</span><span class="effect-control-value" id="val_reverb">0</span></div>
+      <input type="range" min="0" max="127" value="0" oninput="ccChange('reverb', 91, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Chorus (envío)</span><span class="effect-control-value" id="val_chorus">0</span></div>
+      <input type="range" min="0" max="127" value="0" oninput="ccChange('chorus', 93, this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎚️ Forma del sonido</h2>
+  <p style="color:var(--gray);font-size:0.85rem;">Ajustes relativos sobre el tono seleccionado. El centro (64) significa "sin cambio". No todos los tonos responden a todos los parámetros.</p>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Cutoff (brillo)</span><span class="effect-control-value" id="val_cutoff">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('cutoff', 74, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Resonancia</span><span class="effect-control-value" id="val_resonance">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('resonance', 71, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Attack</span><span class="effect-control-value" id="val_attack">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('attack', 73, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Decay</span><span class="effect-control-value" id="val_decay">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('decay', 75, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Release</span><span class="effect-control-value" id="val_release">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('release', 72, this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎶 Vibrato</h2>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Velocidad</span><span class="effect-control-value" id="val_vibrate">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('vibrate', 76, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Profundidad</span><span class="effect-control-value" id="val_vibdepth">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('vibdepth', 77, this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Retardo</span><span class="effect-control-value" id="val_vibdelay">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="ccChangeRel('vibdelay', 78, this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🕹️ Interpretación</h2>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="toggle-row">
+        <input type="checkbox" id="chk_hold" onchange="ccToggle(64, this.checked)">
+        <label for="chk_hold">Sustain (Hold 1)</label>
+      </div>
+      <small>Equivalente al pedal de resonancia (CC 64).</small>
+    </div>
+    <div class="effect-control">
+      <div class="toggle-row">
+        <input type="checkbox" id="chk_sostenuto" onchange="ccToggle(66, this.checked)">
+        <label for="chk_sostenuto">Sostenuto</label>
+      </div>
+      <small>Mantiene solo las notas ya pulsadas (CC 66).</small>
+    </div>
+    <div class="effect-control">
+      <div class="toggle-row">
+        <input type="checkbox" id="chk_soft" onchange="ccToggle(67, this.checked)">
+        <label for="chk_soft">Soft (una corda)</label>
+      </div>
+      <small>Atenúa el ataque (CC 67).</small>
+    </div>
+    <div class="effect-control">
+      <div class="toggle-row">
+        <input type="checkbox" id="chk_portamento" onchange="ccToggle(65, this.checked)">
+        <label for="chk_portamento">Portamento</label>
+      </div>
+      <small>Desliza entre notas consecutivas (CC 65).</small>
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Tiempo de portamento</span><span class="effect-control-value" id="val_portatime">0</span></div>
+      <input type="range" min="0" max="127" value="0" oninput="ccChange('portatime', 5, this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎼 Afinación</h2>
+  <div class="effects-grid">
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Rango de Pitch Bend</span><span class="effect-control-value" id="val_pbrange">2 semit.</span></div>
+      <input type="range" min="0" max="24" value="2" oninput="pitchBendRangeChange(this.value)">
+    </div>
+    <div class="effect-control">
+      <div class="effect-control-label"><span>Afinación gruesa</span><span class="effect-control-value" id="val_coarse">0</span></div>
+      <input type="range" min="-64" max="63" value="0" oninput="coarseTuningChange(this.value)">
+      <small>Transposición en semitonos completos.</small>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🚨 Pánico</h2>
+  <div class="panic-row">
+    <button class="btn btn-warning" onclick="rolandAllNotesOff(midiOutput)">Silenciar todas las notas</button>
+    <button class="btn btn-warning" onclick="rolandAllSoundOff(midiOutput)">Cortar todo el sonido</button>
+    <button class="btn btn-danger" onclick="resetTodo()">Restablecer todos los controladores</button>
+  </div>
+</div>
+
+<script src="/assets/js/midi-roland.js"></script>
+<script src="/assets/js/roland-presets.js"></script>
+<script>
+let midiAccess = null, midiOutput = null, midiInput = null;
+
+async function midiInit() {
+  const dot = document.getElementById('rolandDot'), txt = document.getElementById('rolandStatusText');
+  const errArea = document.getElementById('midiErrorArea');
+  if (!navigator.requestMIDIAccess) {
+    txt.textContent = 'Web MIDI no disponible en este navegador';
+    return;
+  }
+  txt.textContent = 'Conectando…';
+  errArea.style.display = 'none';
+  try {
+    midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+    midiPopulateOutputs();
+    midiPopulateInputs();
+    midiAccess.onstatechange = () => { midiPopulateOutputs(); midiPopulateInputs(); };
+  } catch (e) {
+    dot.classList.remove('on');
+    txt.textContent = 'Sin conexión MIDI';
+    errArea.style.display = 'block';
+    document.getElementById('midiErrorText').textContent = 'Error: ' + (e.message || e.name);
+  }
+}
+
+async function midiRetry() { midiAccess = null; midiOutput = null; midiInput = null; await midiInit(); }
+
+function midiPopulateOutputs() {
+  const sel = document.getElementById('midiOutputSelect'), savedId = localStorage.getItem('midi_output_id');
+  const dot = document.getElementById('rolandDot'), txt = document.getElementById('rolandStatusText');
+  sel.innerHTML = '<option value="">— Salida (Roland) —</option>';
+  midiOutput = null;
+  midiAccess.outputs.forEach(out => {
+    const opt = document.createElement('option');
+    opt.value = out.id; opt.textContent = out.name;
+    if (out.id === savedId) { opt.selected = true; midiOutput = out; }
+    sel.appendChild(opt);
+  });
+  if (midiOutput) { dot.classList.add('on'); txt.textContent = 'Conectado a ' + midiOutput.name; }
+  else { dot.classList.remove('on'); txt.textContent = midiAccess.outputs.size ? 'Selecciona un dispositivo de salida' : 'No se detectan dispositivos MIDI'; }
+}
+
+function midiSelectOutput(id) {
+  localStorage.setItem('midi_output_id', id);
+  midiOutput = id ? midiAccess.outputs.get(id) : null;
+  const dot = document.getElementById('rolandDot'), txt = document.getElementById('rolandStatusText');
+  if (midiOutput) { dot.classList.add('on'); txt.textContent = 'Conectado a ' + midiOutput.name; }
+  else { dot.classList.remove('on'); txt.textContent = 'Sin conectar'; }
+}
+
+function midiPopulateInputs() {
+  const sel = document.getElementById('midiInputSelect');
+  if (!sel || !midiAccess) return;
+  const savedId = localStorage.getItem('midi_input_id_roland');
+  sel.innerHTML = '<option value="">— Entrada (teclado, opcional) —</option>';
+  midiInput = null;
+  midiAccess.inputs.forEach(inp => {
+    const opt = document.createElement('option');
+    opt.value = inp.id; opt.textContent = inp.name;
+    if (inp.id === savedId) { opt.selected = true; midiInput = inp; }
+    sel.appendChild(opt);
+  });
+}
+function midiSelectInput(id) { localStorage.setItem('midi_input_id_roland', id); midiInput = id ? midiAccess.inputs.get(id) : null; }
+
+function ccChange(key, cc, value) {
+  document.getElementById('val_' + key).textContent = value;
+  rolandSendCC(midiOutput, cc, parseInt(value));
+}
+function ccChangePan(value) {
+  const v = parseInt(value);
+  document.getElementById('val_pan').textContent = v === 64 ? 'Centro' : (v < 64 ? 'Izq ' + (64 - v) : 'Der ' + (v - 64));
+  rolandSendCC(midiOutput, 10, v);
+}
+function ccChangeRel(key, cc, value) {
+  const v = parseInt(value);
+  document.getElementById('val_' + key).textContent = (v > 0 ? '+' : '') + v;
+  rolandSendCC(midiOutput, cc, v + 64);
+}
+function ccToggle(cc, on) { rolandSendCC(midiOutput, cc, on ? 127 : 0); }
+
+function pitchBendRangeChange(value) {
+  document.getElementById('val_pbrange').textContent = value + ' semit.';
+  rolandSetPitchBendRange(midiOutput, parseInt(value));
+}
+function coarseTuningChange(value) {
+  const v = parseInt(value);
+  document.getElementById('val_coarse').textContent = (v > 0 ? '+' : '') + v;
+  rolandSetCoarseTuning(midiOutput, v + 64);
+}
+
+function resetTodo() {
+  confirmar('¿Restablecer todos los controladores del Roland a sus valores por defecto?', function () {
+    rolandResetAllControllers(midiOutput);
+  });
+}
+
+function saveLastTone(t) { localStorage.setItem('roland_last_tone', JSON.stringify(t)); }
+
+initRolandPresets('rolandPresetsGrid', 'roland_presets_v1',
+  function () { return document.getElementById('rolandTonePicker').tonePickerApi.getSelected(); },
+  function (t) { document.getElementById('rolandTonePicker').tonePickerApi.selectTone(t); }
+);
+
+midiInit();
+</script>
+
+<%- include('partials/footer') %>

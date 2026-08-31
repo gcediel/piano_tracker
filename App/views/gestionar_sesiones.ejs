@@ -1,0 +1,132 @@
+<%- include('partials/header') %>
+
+<% if (mensaje) { %><div class="alert alert-success"><%- mensaje %></div><% } %>
+<% if (error)   { %><div class="alert alert-danger"><%- error %></div><% } %>
+
+<div class="card">
+  <h2><%= editando ? 'Editar sesión' : 'Nueva sesión manual' %></h2>
+  <form method="POST" action="/gestionar-sesiones">
+    <% if (editando) { %><input type="hidden" name="id" value="<%= editando.id %>"><% } %>
+    <div class="form-inline">
+      <div class="form-group">
+        <label>Fecha *</label>
+        <input type="date" name="fecha" required value="<%= editando ? editando.fecha : new Date().toISOString().split('T')[0] %>">
+      </div>
+    </div>
+
+    <h3 style="margin-top:1rem;">Actividades</h3>
+    <div id="actividadesEdit">
+    <% if (editando && actividadesEditar) { %>
+      <% actividadesEditar.forEach((act, i) => { %>
+      <div class="actividad-item" style="flex-wrap:wrap;gap:0.5rem;">
+        <div class="form-inline" style="flex-wrap:wrap;gap:0.5rem;width:100%;">
+          <input type="hidden" name="actividades[<%= i %>][id]" value="<%= act.id %>">
+          <select name="actividades[<%= i %>][tipo]" style="padding:0.4rem;border-radius:4px;">
+            <% ['calentamiento','tecnica_ejercicios','practica_tecnica','practica','repertorio','improvisacion','composicion'].forEach(t => { %>
+              <option value="<%= t %>" <%= act.tipo===t ? 'selected' : '' %>><%= h.getNombreActividad(t) %></option>
+            <% }) %>
+          </select>
+          <input type="text"   name="actividades[<%= i %>][notas]"    value="<%= act.notas || '' %>"  placeholder="Notas" style="flex:1;min-width:150px;padding:0.4rem;border-radius:4px;">
+          <input type="number" name="actividades[<%= i %>][tiempo]"   value="<%= act.tiempo_segundos %>" placeholder="Segundos" min="0" style="width:100px;padding:0.4rem;border-radius:4px;">
+          <select name="actividades[<%= i %>][pieza_id]" style="padding:0.4rem;border-radius:4px;">
+            <option value="">— Sin pieza —</option>
+            <% piezas.forEach(p => { %>
+              <option value="<%= p.id %>" <%= (act.fallos_pieza_id == p.id) ? 'selected' : '' %>><%= p.compositor %> — <%= p.titulo %></option>
+            <% }) %>
+          </select>
+          <input type="number" name="actividades[<%= i %>][fallos]"    value="<%= act.fallos || 0 %>"   placeholder="Fallos" min="0" style="width:80px;padding:0.4rem;border-radius:4px;">
+          <button type="button" class="btn btn-danger btn-small" onclick="this.closest('.actividad-item').remove()">✕</button>
+        </div>
+      </div>
+      <% }) %>
+    <% } %>
+    </div>
+
+    <button type="button" class="btn btn-small btn-primary mt-1" onclick="agregarActividadEdit()">+ Añadir actividad</button>
+
+    <div class="mt-1" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+      <% if (editando) { %>
+        <button type="submit" name="accion" value="editar" class="btn btn-primary">Guardar cambios</button>
+        <a href="/gestionar-sesiones" class="btn btn-warning">Cancelar</a>
+      <% } else { %>
+        <button type="submit" name="accion" value="crear" class="btn btn-primary">Crear sesión</button>
+      <% } %>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Historial de sesiones</h2>
+  <div style="overflow-x:auto;">
+  <table id="tablaSesiones" class="display" style="width:100%">
+    <thead><tr><th>Fecha</th><th>Estado</th><th>Actividades</th><th>Tiempo total</th><th>Acciones</th></tr></thead>
+    <tbody>
+    <% sesiones.forEach(s => { %>
+      <tr>
+        <td data-order="<%= s.fecha %>"><%= h.formatDate(s.fecha) %></td>
+        <td>
+          <% if (s.estado==='planificada') { %><span style="color:var(--warning)">Planificada</span>
+          <% } else if (s.estado==='en_curso') { %><span style="color:var(--secondary)">En curso</span>
+          <% } else { %><span style="color:var(--success)">Finalizada</span><% } %>
+        </td>
+        <td style="text-align:center;"><%= s.num_actividades %></td>
+        <td><%= h.formatearTiempo(s.tiempo_total || 0) %></td>
+        <td style="white-space:nowrap;">
+          <a href="/gestionar-sesiones?editar=<%= s.id %>" class="btn btn-primary btn-small">Editar</a>
+          <form method="POST" action="/gestionar-sesiones" style="display:inline;" data-confirm="¿Eliminar esta sesión y todas sus actividades?">
+            <input type="hidden" name="id"     value="<%= s.id %>">
+            <input type="hidden" name="accion" value="eliminar">
+            <button type="submit" class="btn btn-danger btn-small">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+let nextIdx = <%= editando && actividadesEditar ? actividadesEditar.length : 0 %>;
+const PIEZAS_OPTS = <%- JSON.stringify(piezas) %>;
+const TIPOS_ACTIVIDAD = [
+  ['calentamiento','Calentamiento'], ['tecnica_ejercicios','Técnica'], ['practica_tecnica','Práctica de técnica'],
+  ['practica','Práctica de repertorio'], ['repertorio','Repertorio'], ['improvisacion','Improvisación'], ['composicion','Composición'],
+];
+
+function agregarActividadEdit() {
+  const opts = TIPOS_ACTIVIDAD.map(([v,n]) => `<option value="${v}">${n}</option>`).join('');
+  const piezaOpts = '<option value="">— Sin pieza —</option>' + PIEZAS_OPTS.map(p => `<option value="${p.id}">${p.compositor} — ${p.titulo}</option>`).join('');
+  const div = document.createElement('div');
+  div.className = 'actividad-item';
+  div.style = 'flex-wrap:wrap;gap:0.5rem;';
+  div.innerHTML = `<div class="form-inline" style="flex-wrap:wrap;gap:0.5rem;width:100%;">
+    <select name="actividades[${nextIdx}][tipo]" style="padding:0.4rem;border-radius:4px;">${opts}</select>
+    <input type="text"   name="actividades[${nextIdx}][notas]"   placeholder="Notas"    style="flex:1;min-width:150px;padding:0.4rem;border-radius:4px;">
+    <input type="number" name="actividades[${nextIdx}][tiempo]"  placeholder="Segundos" min="0" value="0" style="width:100px;padding:0.4rem;border-radius:4px;">
+    <select name="actividades[${nextIdx}][pieza_id]" style="padding:0.4rem;border-radius:4px;">${piezaOpts}</select>
+    <input type="number" name="actividades[${nextIdx}][fallos]"   placeholder="Fallos" min="0" value="0" style="width:80px;padding:0.4rem;border-radius:4px;">
+    <button type="button" class="btn btn-danger btn-small" onclick="this.closest('.actividad-item').remove()">✕</button>
+  </div>`;
+  document.getElementById('actividadesEdit').appendChild(div);
+  nextIdx++;
+}
+</script>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+$(document).ready(function() {
+  if ($('#tablaSesiones tbody tr').length > 1) {
+    $('#tablaSesiones').DataTable({
+      language: { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+      order: [[0, 'desc']],
+      pageLength: 25,
+      columnDefs: [ { orderable: false, targets: -1 } ]
+    });
+  }
+});
+</script>
+
+<%- include('partials/footer') %>

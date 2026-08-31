@@ -44,6 +44,7 @@ requerirAuth();
                 <ul class="nav-menu">
                     <li><a href="index.php" <?php echo basename($_SERVER['PHP_SELF']) == 'index.php' ? 'class="active"' : ''; ?>>Inicio</a></li>
                     <li><a href="repertorio.php" <?php echo basename($_SERVER['PHP_SELF']) == 'repertorio.php' ? 'class="active"' : ''; ?>>Repertorio</a></li>
+                    <li><a href="tecnica.php" <?php echo basename($_SERVER['PHP_SELF']) == 'tecnica.php' ? 'class="active"' : ''; ?>>Técnica</a></li>
                     <li><a href="sesion.php" <?php echo basename($_SERVER['PHP_SELF']) == 'sesion.php' ? 'class="active"' : ''; ?>>Sesión</a></li>
                     <li><a href="informes.php" <?php echo basename($_SERVER['PHP_SELF']) == 'informes.php' ? 'class="active"' : ''; ?>>Informes</a></li>
                     <li><a href="admin.php" <?php echo basename($_SERVER['PHP_SELF']) == 'admin.php' ? 'class="active"' : ''; ?>>Admin</a></li>
@@ -53,3 +54,45 @@ requerirAuth();
         </nav>
     </header>
     <main class="container">
+
+<!-- Modal de confirmación reutilizable -->
+<div id="modal-confirmar" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+        <p id="modal-confirmar-texto"></p>
+        <div class="modal-actions">
+            <button id="modal-confirmar-no" class="btn btn-primary">Cancelar</button>
+            <button id="modal-confirmar-si" class="btn btn-danger">Confirmar</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modal    = document.getElementById('modal-confirmar');
+    var texto    = document.getElementById('modal-confirmar-texto');
+    var btnSi    = document.getElementById('modal-confirmar-si');
+    var btnNo    = document.getElementById('modal-confirmar-no');
+    var pendiente = null;
+
+    function cerrar() { modal.classList.remove('visible'); pendiente = null; }
+
+    window.confirmar = function (mensaje, onSi) {
+        texto.textContent = mensaje;
+        pendiente = onSi;
+        modal.classList.add('visible');
+        btnNo.focus();
+    };
+
+    btnSi.addEventListener('click', function () { var fn = pendiente; cerrar(); if (fn) fn(); });
+    btnNo.addEventListener('click', cerrar);
+    modal.addEventListener('click', function (e) { if (e.target === modal) cerrar(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
+
+    document.addEventListener('submit', function (e) {
+        var msg = e.target.dataset.confirm;
+        if (!msg) return;
+        e.preventDefault();
+        var form = e.target;
+        confirmar(msg, function () { form.submit(); });
+    }, true);
+}());
+</script>

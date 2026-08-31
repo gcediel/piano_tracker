@@ -1,0 +1,38 @@
+<script src="/assets/js/roland_tones.js"></script>
+<script src="/assets/js/tone-picker.js"></script>
+<div id="<%= idPrefix %>" class="tone-picker">
+  <div class="tone-picker-row">
+    <select class="tone-picker-group" aria-label="Grupo de tonos"></select>
+    <select class="tone-picker-tone" aria-label="Tono" disabled></select>
+  </div>
+  <div class="tone-picker-search-wrap">
+    <input type="text" class="tone-picker-search" placeholder="Búsqueda global por nombre (p. ej. 'grand', 'strings', 'lead')…" aria-label="Búsqueda global de tonos">
+    <div class="tone-picker-search-results"></div>
+  </div>
+  <div class="tone-picker-current">
+    <span class="tone-picker-current-text">Sin tono asignado</span>
+  </div>
+</div>
+<input type="hidden" name="<%= fieldPrefix %>_msb"    id="<%= idPrefix %>_msb"    value="<%= initial.msb    != null ? initial.msb    : '' %>">
+<input type="hidden" name="<%= fieldPrefix %>_lsb"    id="<%= idPrefix %>_lsb"    value="<%= initial.lsb    != null ? initial.lsb    : '' %>">
+<input type="hidden" name="<%= fieldPrefix %>_pc"     id="<%= idPrefix %>_pc"     value="<%= initial.pc     != null ? initial.pc     : '' %>">
+<input type="hidden" name="<%= fieldPrefix %>_nombre" id="<%= idPrefix %>_nombre" value="<%= initial.nombre || '' %>">
+<script>
+(function () {
+  var tonePickerApi = initTonePicker('<%= idPrefix %>', {
+    msb: <%- initial.msb != null ? initial.msb : 'null' %>,
+    lsb: <%- initial.lsb != null ? initial.lsb : 'null' %>,
+    pc: <%- initial.pc != null ? initial.pc : 'null' %>,
+    nombre: <%- initial.nombre ? JSON.stringify(initial.nombre) : 'null' %>
+  }, function (t) {
+    document.getElementById('<%= idPrefix %>_msb').value = t.msb;
+    document.getElementById('<%= idPrefix %>_lsb').value = t.lsb;
+    document.getElementById('<%= idPrefix %>_pc').value = t.pc;
+    document.getElementById('<%= idPrefix %>_nombre').value = t.name;
+    <% if (typeof onSelectJs !== 'undefined' && onSelectJs) { %><%- onSelectJs %><% } %>
+  });
+  // Expone la API del picker (getSelected/setSelected/selectTone) en el contenedor
+  // para que otras piezas de la página (p. ej. los presets del Roland) puedan usarla.
+  document.getElementById('<%= idPrefix %>').tonePickerApi = tonePickerApi;
+}());
+</script>

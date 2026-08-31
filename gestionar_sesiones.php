@@ -323,8 +323,9 @@ include 'includes/header.php';
                             <select name="actividades[<?php echo $index; ?>][tipo]" class="tipo-actividad" required>
                                 <option value="">Seleccionar...</option>
                                 <option value="calentamiento" <?php echo $act['tipo'] == 'calentamiento' ? 'selected' : ''; ?>>Calentamiento</option>
-                                <option value="practica" <?php echo $act['tipo'] == 'practica' ? 'selected' : ''; ?>>Práctica</option>
-                                <option value="tecnica" <?php echo $act['tipo'] == 'tecnica' ? 'selected' : ''; ?>>Técnica</option>
+                                <option value="tecnica_ejercicios" <?php echo in_array($act['tipo'], ['tecnica', 'tecnica_ejercicios']) ? 'selected' : ''; ?>>Técnica</option>
+                                <option value="practica_tecnica" <?php echo $act['tipo'] == 'practica_tecnica' ? 'selected' : ''; ?>>Práctica de técnica</option>
+                                <option value="practica" <?php echo $act['tipo'] == 'practica' ? 'selected' : ''; ?>>Práctica de repertorio</option>
                                 <option value="repertorio" <?php echo $act['tipo'] == 'repertorio' ? 'selected' : ''; ?>>Repertorio</option>
                                 <option value="improvisacion" <?php echo $act['tipo'] == 'improvisacion' ? 'selected' : ''; ?>>Improvisación</option>
                                 <option value="composicion" <?php echo $act['tipo'] == 'composicion' ? 'selected' : ''; ?>>Composición</option>
@@ -396,8 +397,9 @@ include 'includes/header.php';
                             <select name="actividades[0][tipo]" class="tipo-actividad" required>
                                 <option value="">Seleccionar...</option>
                                 <option value="calentamiento">Calentamiento</option>
-                                <option value="practica">Práctica</option>
-                                <option value="tecnica">Técnica</option>
+                                <option value="tecnica_ejercicios">Técnica</option>
+                                <option value="practica_tecnica">Práctica de técnica</option>
+                                <option value="practica">Práctica de repertorio</option>
                                 <option value="repertorio" selected>Repertorio</option>
                                 <option value="improvisacion">Improvisación</option>
                                 <option value="composicion">Composición</option>
@@ -471,7 +473,7 @@ include 'includes/header.php';
                     <td><?php echo formatearTiempo($sesion['tiempo_total']); ?></td>
                     <td style="white-space: nowrap;">
                         <a href="?editar=<?php echo $sesion['id']; ?>" class="btn btn-warning btn-small">✏️ Editar</a>
-                        <form method="POST" style="display: inline;" onsubmit="return confirm('¿Eliminar esta sesión? Esta acción no se puede deshacer.');">
+                        <form method="POST" style="display: inline;" data-confirm="¿Eliminar esta sesión? Esta acción no se puede deshacer.">
                             <input type="hidden" name="accion" value="eliminar">
                             <input type="hidden" name="id" value="<?php echo $sesion['id']; ?>">
                             <button type="submit" class="btn btn-danger btn-small">Eliminar</button>
@@ -502,8 +504,9 @@ function añadirActividad() {
                 <select name="actividades[${actividadIndex}][tipo]" class="tipo-actividad" required>
                     <option value="">Seleccionar...</option>
                     <option value="calentamiento">Calentamiento</option>
-                    <option value="practica">Práctica</option>
-                    <option value="tecnica">Técnica</option>
+                    <option value="tecnica_ejercicios">Técnica</option>
+                    <option value="practica_tecnica">Práctica de técnica</option>
+                    <option value="practica">Práctica de repertorio</option>
                     <option value="repertorio">Repertorio</option>
                     <option value="improvisacion">Improvisación</option>
                     <option value="composicion">Composición</option>

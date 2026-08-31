@@ -1,0 +1,154 @@
+<%- include('partials/header') %>
+
+<div class="card">
+  <h2>Filtros de informe</h2>
+
+  <form method="GET" action="/informes" class="form-inline">
+    <div class="form-group">
+      <label for="periodo">Periodo</label>
+      <select name="periodo" id="periodo" onchange="toggleFiltros()">
+        <option value="dia"    <%= periodo==='dia'    ? 'selected' : '' %>>Hoy</option>
+        <option value="semana" <%= periodo==='semana' ? 'selected' : '' %>>Esta semana</option>
+        <option value="mes"    <%= periodo==='mes'    ? 'selected' : '' %>>Mes específico</option>
+        <option value="anio"   <%= periodo==='anio'   ? 'selected' : '' %>>Año específico</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="filtroMes" style="<%= periodo !== 'mes' ? 'display:none;' : '' %>">
+      <label for="mes">Mes</label>
+      <select name="mes" id="mes">
+        <% h.MESES.forEach((nombre, idx) => { const v = String(idx+1).padStart(2,'0'); %>
+          <option value="<%= v %>" <%= mes === v ? 'selected' : '' %>><%= nombre %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <div class="form-group" id="filtroAnio" style="<%= (periodo !== 'mes' && periodo !== 'anio') ? 'display:none;' : '' %>">
+      <label for="anio">Año</label>
+      <select name="anio" id="anio">
+        <% for (let i = new Date().getFullYear(); i >= 2020; i--) { %>
+          <option value="<%= i %>" <%= String(anio) === String(i) ? 'selected' : '' %>><%= i %></option>
+        <% } %>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <button type="submit" class="btn btn-primary">Generar informe</button>
+    </div>
+  </form>
+
+  <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:2px solid var(--border);">
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <a href="/informe-mensual" class="btn btn-success" style="font-size:1.05rem;padding:0.7rem 1.5rem;">📄 Informes mensuales detallados</a>
+      <a href="/informe-anual" class="btn btn-warning" style="font-size:1.05rem;padding:0.7rem 1.5rem;">📅 Informes anuales detallados</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Resumen del periodo: <%= h.formatDate(fechaInicio) %> - <%= h.formatDate(fechaFin) %></h2>
+  <div class="stats-grid">
+    <div class="stat-box"><h3><%= h.formatearTiempo(tiempoTotal) %></h3><p>Tiempo total practicado</p></div>
+    <div class="stat-box"><h3><%= numSesiones %></h3><p>Sesiones completadas</p></div>
+    <div class="stat-box"><h3><%= numSesiones > 0 ? h.formatearTiempo(Math.round(tiempoTotal / numSesiones)) : '00:00:00' %></h3><p>Promedio por sesión</p></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Tiempo por actividad</h2>
+  <% if (!tiempoPorActividad.length) { %>
+    <p>No hay datos de actividades en este periodo.</p>
+  <% } else { %>
+  <table>
+    <thead><tr><th>Actividad</th><th>Tiempo total</th><th>Veces practicada</th><th>% del total</th></tr></thead>
+    <tbody>
+    <% tiempoPorActividad.forEach(act => { %>
+      <tr>
+        <td><%= h.getNombreActividad(act.tipo) %></td>
+        <td><%= h.formatearTiempo(act.tiempo_total) %></td>
+        <td style="text-align:center;"><%= act.num_veces %></td>
+        <td style="text-align:center;"><%= tiempoTotal > 0 ? (act.tiempo_total / tiempoTotal * 100).toFixed(1) : 0 %>%</td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Práctica de piezas del repertorio</h2>
+  <% if (!fallosPorPieza.length) { %>
+    <p>No hay datos de fallos registrados en este periodo.</p>
+  <% } else { %>
+  <div style="overflow-x:auto;">
+  <table id="tablaPracticaPiezas" class="display" style="width:100%">
+    <thead><tr><th>Compositor</th><th>Título</th><th>Días practicados</th><th>Media fallos/día</th></tr></thead>
+    <tbody>
+    <% fallosPorPieza.forEach(p => { %>
+      <tr>
+        <td><%= p.compositor %></td>
+        <td><%= p.titulo %></td>
+        <td style="text-align:center;"><%= p.dias_practicados %></td>
+        <td style="text-align:center;"><%= Number(p.media_fallos_dia).toFixed(2) %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Práctica diaria</h2>
+  <% if (!tiempoPorDia.length) { %>
+    <p>No hay datos de práctica en este periodo.</p>
+  <% } else { %>
+  <div style="overflow-x:auto;">
+  <table id="tablaPracticaDiaria" class="display" style="width:100%">
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Total</th><th>Calentamiento</th><th>Técnica</th><th>Práctica técnica</th>
+        <th>Práctica</th><th>Repertorio</th><th>Improvisación</th><th>Composición</th><th>Media fallos</th>
+      </tr>
+    </thead>
+    <tbody>
+    <% tiempoPorDia.forEach(dia => { %>
+      <tr>
+        <td data-order="<%= dia.fecha %>"><%= h.formatDate(dia.fecha) %></td>
+        <td><%= h.formatearTiempo(dia.tiempo_total) %></td>
+        <td><%= dia.tiempo_calentamiento     > 0 ? h.formatearTiempo(dia.tiempo_calentamiento)     : '-' %></td>
+        <td><%= dia.tiempo_tecnica           > 0 ? h.formatearTiempo(dia.tiempo_tecnica)           : '-' %></td>
+        <td><%= dia.tiempo_practica_tecnica  > 0 ? h.formatearTiempo(dia.tiempo_practica_tecnica)  : '-' %></td>
+        <td><%= dia.tiempo_practica          > 0 ? h.formatearTiempo(dia.tiempo_practica)          : '-' %></td>
+        <td><%= dia.tiempo_repertorio        > 0 ? h.formatearTiempo(dia.tiempo_repertorio)        : '-' %></td>
+        <td><%= dia.tiempo_improvisacion     > 0 ? h.formatearTiempo(dia.tiempo_improvisacion)     : '-' %></td>
+        <td><%= dia.tiempo_composicion       > 0 ? h.formatearTiempo(dia.tiempo_composicion)       : '-' %></td>
+        <td style="text-align:center;">
+          <%= dia.media_fallos_repertorio != null ? Number(dia.media_fallos_repertorio).toFixed(2) : '-' %>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+function toggleFiltros() {
+  const periodo = document.getElementById('periodo').value;
+  document.getElementById('filtroMes').style.display  = (periodo === 'mes') ? '' : 'none';
+  document.getElementById('filtroAnio').style.display = (periodo === 'mes' || periodo === 'anio') ? '' : 'none';
+}
+
+$(document).ready(function () {
+  const lang = { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' };
+  if ($('#tablaPracticaPiezas tbody tr').length > 4) $('#tablaPracticaPiezas').DataTable({ language: lang, order: [[2, 'desc']], pageLength: 25 });
+  if ($('#tablaPracticaDiaria tbody tr').length > 4) $('#tablaPracticaDiaria').DataTable({ language: lang, order: [[0, 'desc']], pageLength: 31 });
+});
+</script>
+
+<%- include('partials/footer') %>

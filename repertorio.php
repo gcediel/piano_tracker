@@ -47,14 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($accion === 'crear') {
         try {
-            $stmt = $db->prepare("INSERT INTO piezas (compositor, titulo, libro, grado, tempo, ponderacion, programa_midi)
-                                  VALUES (:compositor, :titulo, :libro, :grado, :tempo, :ponderacion, :programa_midi)");
+            $stmt = $db->prepare("INSERT INTO piezas (compositor, titulo, libro, grado, tempo, tempo_objetivo, ponderacion, programa_midi)
+                                  VALUES (:compositor, :titulo, :libro, :grado, :tempo, :tempo_objetivo, :ponderacion, :programa_midi)");
             $stmt->execute([
                 ':compositor' => $_POST['compositor'],
                 ':titulo' => $_POST['titulo'],
                 ':libro' => $_POST['libro'] ?: null,
                 ':grado' => $_POST['grado'] ?: null,
                 ':tempo' => $_POST['tempo'] ?: null,
+                ':tempo_objetivo' => $_POST['tempo_objetivo'] ?: null,
                 ':ponderacion' => $_POST['ponderacion'] ?: 1.00,
                 ':programa_midi' => intval($_POST['programa_midi'] ?? 0),
             ]);
@@ -63,12 +64,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Error al añadir pieza: ' . $e->getMessage();
         }
     }
-    
+
     if ($accion === 'editar') {
         try {
             $stmt = $db->prepare("UPDATE piezas SET compositor = :compositor, titulo = :titulo,
-                                  libro = :libro, grado = :grado, tempo = :tempo, ponderacion = :ponderacion,
-                                  programa_midi = :programa_midi
+                                  libro = :libro, grado = :grado, tempo = :tempo, tempo_objetivo = :tempo_objetivo,
+                                  ponderacion = :ponderacion, programa_midi = :programa_midi
                                   WHERE id = :id");
             $stmt->execute([
                 ':id' => $_POST['id'],
@@ -77,12 +78,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':libro' => $_POST['libro'] ?: null,
                 ':grado' => $_POST['grado'] ?: null,
                 ':tempo' => $_POST['tempo'] ?: null,
+                ':tempo_objetivo' => $_POST['tempo_objetivo'] ?: null,
                 ':ponderacion' => $_POST['ponderacion'] ?: 1.00,
                 ':programa_midi' => intval($_POST['programa_midi'] ?? 0),
             ]);
             $mensaje = 'Pieza actualizada correctamente';
         } catch (PDOException $e) {
             $error = 'Error al actualizar pieza: ' . $e->getMessage();
+        }
+    }
+
+    if ($accion === 'marcar_mantenimiento') {
+        try {
+            $stmt = $db->prepare("UPDATE piezas SET estado = 'mantenimiento', meses_objetivo_consecutivos = 0,
+                                  sugerencia_graduacion_pendiente = 0 WHERE id = :id");
+            $stmt->execute([':id' => $_POST['id']]);
+            $mensaje = 'Pieza marcada como mantenimiento';
+        } catch (PDOException $e) {
+            $error = 'Error al cambiar el estado: ' . $e->getMessage();
+        }
+    }
+
+    if ($accion === 'marcar_aprendizaje') {
+        try {
+            $stmt = $db->prepare("UPDATE piezas SET estado = 'aprendizaje' WHERE id = :id");
+            $stmt->execute([':id' => $_POST['id']]);
+            $mensaje = 'Pieza devuelta a aprendizaje';
+        } catch (PDOException $e) {
+            $error = 'Error al cambiar el estado: ' . $e->getMessage();
         }
     }
     
@@ -260,8 +283,14 @@ include 'includes/header.php';
             
             <div class="form-group">
                 <label for="tempo">Tempo</label>
-                <input type="number" id="tempo" name="tempo" min="1" max="300" 
+                <input type="number" id="tempo" name="tempo" min="1" max="300"
                        value="<?php echo htmlspecialchars($piezaEditar['tempo'] ?? ''); ?>">
+            </div>
+
+            <div class="form-group">
+                <label for="tempo_objetivo" title="Al alcanzarlo y mantenerlo, la app sugerirá pasar la pieza a mantenimiento">Tempo objetivo</label>
+                <input type="number" id="tempo_objetivo" name="tempo_objetivo" min="1" max="300"
+                       value="<?php echo htmlspecialchars($piezaEditar['tempo_objetivo'] ?? ''); ?>">
             </div>
         </div>
         
@@ -302,7 +331,13 @@ include 'includes/header.php';
     <div class="alert alert-info" style="margin-bottom: 1rem;">
         <strong>ℹ️ Para eliminar una pieza:</strong> Primero debes <strong>desactivarla</strong> usando el botón amarillo "Desactivar". Una vez desactivada, aparecerá el botón rojo "Eliminar". Solo se pueden eliminar piezas que no tengan registros de práctica asociados.
     </div>
-    
+
+    <div style="margin-bottom: 1rem;">
+        <label style="cursor: pointer;">
+            <input type="checkbox" id="chkIncluirInactivas" checked onchange="toggleInactivas()"> Incluir piezas desactivadas
+        </label>
+    </div>
+
     <?php if (empty($piezas)): ?>
         <p>No hay piezas en el repertorio. Añade tu primera pieza usando el formulario anterior.</p>
     <?php else: ?>
@@ -316,6 +351,8 @@ include 'includes/header.php';
                         <th>Gr.</th>
                         <th>Tempo</th>
                         <th>Tono GM</th>
+                        <th title="Tempo al que se sugiere pasar la pieza a mantenimiento">Objetivo</th>
+                        <th title="Aprendizaje: compite en la selección automática. Mantenimiento: solo se propone cuando no quedan piezas en aprendizaje">Categoría</th>
                         <th>Pond.</th>
                         <th title="Días practicados últimos 30 días">Días</th>
                         <th title="Media de fallos por día (últimos 30 días)">M.Fallos</th>
@@ -360,13 +397,21 @@ include 'includes/header.php';
                     }
                     
                     ?>
-                    <tr style="<?php echo !$pieza['activa'] ? 'opacity: 0.5;' : ''; ?>">
+                    <tr data-activa="<?php echo $pieza['activa'] ? '1' : '0'; ?>" style="<?php echo !$pieza['activa'] ? 'opacity: 0.5;' : ''; ?>">
                         <td><?php echo htmlspecialchars($pieza['compositor']); ?></td>
                         <td><?php echo htmlspecialchars($pieza['titulo']); ?></td>
                         <td><?php echo htmlspecialchars($pieza['libro'] ?? '-'); ?></td>
                         <td><?php echo $pieza['grado'] ?? '-'; ?></td>
                         <td><?php echo $pieza['tempo'] ?? '-'; ?></td>
                         <td><?php echo $pieza['programa_midi'] ?? 0; ?></td>
+                        <td><?php echo $pieza['tempo_objetivo'] ?? '-'; ?></td>
+                        <td>
+                            <?php if ($pieza['estado'] === 'mantenimiento'): ?>
+                                <span style="color: var(--secondary)">🛠 Mantenimiento</span>
+                            <?php else: ?>
+                                <span>📈 Aprendizaje</span>
+                            <?php endif; ?>
+                        </td>
                         <td><?php echo number_format($pieza['ponderacion'], 2); ?></td>
                         <td style="text-align: center;">
                             <?php echo $pieza['dias_practicados_30d'] > 0 ? $pieza['dias_practicados_30d'] : '-'; ?>
@@ -391,7 +436,14 @@ include 'includes/header.php';
                         <td style="padding: 0.3rem;">
                             <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                 <a href="?editar=<?php echo $pieza['id']; ?>" class="btn btn-primary" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; text-align: center;">Editar</a>
-                                <form method="POST" onsubmit="return confirm('¿<?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?> esta pieza?');">
+                                <form method="POST" data-confirm="<?php echo $pieza['estado'] === 'mantenimiento' ? 'Volver esta pieza a aprendizaje' : 'Marcar esta pieza como mantenimiento'; ?>?">
+                                    <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
+                                    <input type="hidden" name="accion" value="<?php echo $pieza['estado'] === 'mantenimiento' ? 'marcar_aprendizaje' : 'marcar_mantenimiento'; ?>">
+                                    <button type="submit" class="btn" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; width: 100%; background: var(--secondary); color: white;">
+                                        <?php echo $pieza['estado'] === 'mantenimiento' ? '📈 A aprendizaje' : '🛠 A mantenimiento'; ?>
+                                    </button>
+                                </form>
+                                <form method="POST" data-confirm="<?php echo $pieza['activa'] ? 'Desactivar' : 'Activar'; ?> esta pieza?">
                                     <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
                                     <input type="hidden" name="accion" value="<?php echo $pieza['activa'] ? 'desactivar' : 'activar'; ?>">
                                     <button type="submit" class="btn <?php echo $pieza['activa'] ? 'btn-warning' : 'btn-success'; ?>" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; width: 100%;">
@@ -403,7 +455,7 @@ include 'includes/header.php';
                                     Eliminar
                                 </button>
                                 <?php else: ?>
-                                <form method="POST" onsubmit="return confirm('⚠️ ¿ELIMINAR permanentemente esta pieza?\n\nEsta acción NO se puede deshacer.\n\nSolo se puede eliminar si no tiene registros de práctica.');">
+                                <form method="POST" data-confirm="⚠️ ¿ELIMINAR permanentemente esta pieza? Esta acción NO se puede deshacer. Solo se puede eliminar si no tiene registros de práctica.">
                                     <input type="hidden" name="id" value="<?php echo $pieza['id']; ?>">
                                     <input type="hidden" name="accion" value="eliminar">
                                     <button type="submit" class="btn btn-danger" style="padding: 0.2rem 0.4rem; font-size: 0.75rem; width: 100%;">Eliminar</button>
@@ -446,8 +498,23 @@ include 'includes/header.php';
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
 <script>
+let incluirInactivas = true;
+
+$.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData, counter) {
+    if (settings.nTable.id !== 'tablaPiezas') return true;
+    if (incluirInactivas) return true;
+    return $(tablaPiezasDT.row(dataIndex).node()).attr('data-activa') === '1';
+});
+
+function toggleInactivas() {
+    incluirInactivas = document.getElementById('chkIncluirInactivas').checked;
+    tablaPiezasDT.draw();
+}
+
+let tablaPiezasDT;
+
 $(document).ready(function() {
-    $('#tablaPiezas').DataTable({
+    tablaPiezasDT = $('#tablaPiezas').DataTable({
         "language": {
             "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json"
         },
@@ -456,17 +523,20 @@ $(document).ready(function() {
         "order": [[0, "asc"]],
         "columnDefs": [
             { "orderable": false, "targets": -1 }, // Desactivar ordenamiento en columna Acciones
-            { "width": "14%", "targets": 0 },  // Compositor
-            { "width": "17%", "targets": 1 },  // Título
-            { "width": "13%", "targets": 2 },  // Libro
-            { "width": "5%",  "targets": 3 },  // Grado
-            { "width": "6%",  "targets": 4 },  // Tempo
+            { "width": "12%", "targets": 0 },  // Compositor
+            { "width": "16%", "targets": 1 },  // Título
+            { "width": "10%", "targets": 2 },  // Libro
+            { "width": "4%",  "targets": 3 },  // Grado
+            { "width": "5%",  "targets": 4 },  // Tempo
             { "width": "6%",  "targets": 5 },  // Tono GM
-            { "width": "6%",  "targets": 6 },  // Ponderación
-            { "width": "5%",  "targets": 7 },  // Días
-            { "width": "9%",  "targets": 8 },  // Media
-            { "width": "6%",  "targets": 9 },  // Estado
-            { "width": "13%", "targets": 10 }  // Acciones
+            { "width": "5%",  "targets": 6 },  // Objetivo
+            { "width": "7%",  "targets": 7 },  // Categoría
+            { "width": "5%",  "targets": 8 },  // Ponderación
+            { "width": "4%",  "targets": 9 },  // Días
+            { "width": "8%",  "targets": 10 }, // Media
+            { "width": "5%",  "targets": 11 }, // Estado
+            { "width": "13%", "targets": 12 }  // Acciones
+
         ],
         "autoWidth": false,
         "scrollX": false

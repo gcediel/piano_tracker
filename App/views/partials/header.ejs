@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle || 'Piano Tracker' %></title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+<header>
+  <nav>
+    <div class="container">
+      <h1>
+        <svg width="44" height="30" viewBox="0 0 44 30" style="display:inline-block;vertical-align:middle;margin-right:10px;">
+          <rect x="6"  y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="10.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="15"  y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="19.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="24"  y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="28.5" y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="33"  y="0" width="4.5" height="24" fill="#ecf0f1" stroke="#2c3e50" stroke-width="0.8"/>
+          <rect x="9"   y="0" width="3" height="16" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+          <rect x="13.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+          <rect x="22.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+          <rect x="27"  y="0" width="3" height="16" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+          <rect x="31.5" y="0" width="3" height="16" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+        </svg>
+        Piano Tracker
+      </h1>
+      <ul class="nav-menu">
+        <li><a href="/" <%- currentPage==='index' ? 'class="active"' : '' %>>Inicio</a></li>
+        <li><a href="/repertorio" <%- currentPage==='repertorio' ? 'class="active"' : '' %>>Repertorio</a></li>
+        <li><a href="/tecnica" <%- currentPage==='tecnica' ? 'class="active"' : '' %>>Técnica</a></li>
+        <li><a href="/sesion" <%- currentPage==='sesion' ? 'class="active"' : '' %>>Sesión</a></li>
+        <li><a href="/informes" <%- currentPage==='informes' ? 'class="active"' : '' %>>Informes</a></li>
+        <li><a href="/roland" <%- currentPage==='roland' ? 'class="active"' : '' %>>Roland GO:KEYS</a></li>
+        <li><a href="/gestionar-sesiones" <%- currentPage==='gestionar' ? 'class="active"' : '' %>>Sesiones</a></li>
+        <li><a href="/admin" <%- currentPage==='admin' ? 'class="active"' : '' %>>Admin</a></li>
+      </ul>
+    </div>
+  </nav>
+</header>
+<main class="container">
+
+<!-- Modal de confirmación reutilizable -->
+<div id="modal-confirmar" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+        <p id="modal-confirmar-texto"></p>
+        <div class="modal-actions">
+            <button id="modal-confirmar-no" class="btn btn-primary">Cancelar</button>
+            <button id="modal-confirmar-si" class="btn btn-danger">Confirmar</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modal    = document.getElementById('modal-confirmar');
+    var texto    = document.getElementById('modal-confirmar-texto');
+    var btnSi    = document.getElementById('modal-confirmar-si');
+    var btnNo    = document.getElementById('modal-confirmar-no');
+    var pendiente = null;
+
+    function cerrar() { modal.classList.remove('visible'); pendiente = null; }
+
+    window.confirmar = function (mensaje, onSi) {
+        texto.textContent = mensaje;
+        pendiente = onSi;
+        modal.classList.add('visible');
+        btnNo.focus();
+    };
+
+    btnSi.addEventListener('click', function () { var fn = pendiente; cerrar(); if (fn) fn(); });
+    btnNo.addEventListener('click', cerrar);
+    modal.addEventListener('click', function (e) { if (e.target === modal) cerrar(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
+
+    document.addEventListener('submit', function (e) {
+        var msg = e.target.dataset.confirm;
+        if (!msg) return;
+        e.preventDefault();
+        var form = e.target;
+        confirmar(msg, function () { form.submit(); });
+    }, true);
+}());
+</script>

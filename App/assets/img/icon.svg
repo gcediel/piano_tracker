@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34495e"/>
+      <stop offset="100%" stop-color="#1c2833"/>
+    </linearGradient>
+    <linearGradient id="key" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e6ecf0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Arco de acento -->
+  <circle cx="256" cy="256" r="205" fill="none" stroke="#3498db" stroke-width="6" opacity="0.35"/>
+
+  <!-- Teclado -->
+  <g>
+    <rect x="86" y="144" width="340" height="224" rx="10" fill="#0f1620"/>
+    <rect x="88" y="146" width="48" height="220" rx="4" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="136" y="146" width="48" height="220" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="184" y="146" width="48" height="220" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="232" y="146" width="48" height="220" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="280" y="146" width="48" height="220" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="328" y="146" width="48" height="220" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+    <rect x="376" y="146" width="48" height="220" rx="4" fill="url(#key)" stroke="#c7d0d6" stroke-width="1.5"/>
+
+    <rect x="120" y="146" width="32" height="140" rx="3" fill="#161b22"/>
+    <rect x="168" y="146" width="32" height="140" rx="3" fill="#161b22"/>
+    <rect x="264" y="146" width="32" height="140" rx="3" fill="#161b22"/>
+    <rect x="312" y="146" width="32" height="140" rx="3" fill="#161b22"/>
+    <rect x="360" y="146" width="32" height="140" rx="3" fill="#161b22"/>
+  </g>
+
+  <!-- Nota musical -->
+  <g transform="translate(368,96)">
+    <circle cx="0" cy="46" r="16" fill="#f39c12"/>
+    <rect x="14" y="-28" width="7" height="74" rx="3" fill="#f39c12"/>
+    <path d="M 21 -28 C 46 -22 46 6 21 14 Z" fill="#f39c12"/>
+  </g>
+</svg>

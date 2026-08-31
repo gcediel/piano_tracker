@@ -1,10 +1,10 @@
-# Piano Tracker - Documentación Técnica v1.6
+# Piano Tracker - Documentación Técnica v1.8
 
 **Aplicación web para gestión de práctica de piano**  
 **Autor:** Guillermo  
 **Fecha de creación:** Enero 2025  
 **Última actualización:** Junio 2026  
-**Versión:** 1.6  
+**Versión:** 1.8  
 **Stack:** PHP 8.x + MySQL 8.x / MariaDB + Vanilla JavaScript
 
 ---
@@ -38,6 +38,7 @@ Piano Tracker es una aplicación web para pianistas que permite:
 - **Gestión de repertorio:** CRUD de piezas con metadatos (compositor, título, grado, tempo, ponderación, tono MIDI GM)
 - **Metrónomo integrado:** BPM ajustable, pulsos por compás configurables, acento en primer pulso, control de volumen; preferencias persistidas en `localStorage`
 - **Soporte MIDI:** Envío automático de Program Change (Web MIDI API) al iniciar y cambiar pieza en Repertorio
+- **Piano MIDI (`midi.php`):** Página dedicada para seleccionar instrumento (128 voces GM, 16 categorías) y controlar parámetros MIDI (CC7, CC91, CC93, CC10); incluye metrónomo independiente
 - **Sesiones de práctica:** Cronómetro con flujo automático entre actividades
 - **Edición en sesión:** Tempo y tono MIDI de una pieza editables durante la práctica sin salir de la página
 - **Configuración de metrónomo:** BPM por defecto para Técnica y Práctica configurables desde Admin
@@ -122,6 +123,7 @@ piano_tracker/
 ├── index.php                  # Dashboard
 ├── repertorio.php             # Gestión de piezas + tono MIDI GM
 ├── sesion.php                 # Sesiones, timer, metrónomo, MIDI
+├── midi.php                   # Control MIDI del piano (instrumento, efectos, metrónomo)
 ├── informes.php               # Estadísticas
 ├── admin.php                  # Administración + config metrónomo
 ├── gestionar_sesiones.php     # CRUD de sesiones manuales
@@ -304,11 +306,12 @@ Panel visible durante toda la sesión activa. Implementado con **Web Audio API**
 
 **Persistencia en `localStorage`:**
 
-| Clave             | Contenido                   |
-|-------------------|-----------------------------|
-| `metro_volumen`   | Volumen (0.0 – 1.0)         |
-| `metro_acento`    | Acento primer pulso (bool)  |
-| `midi_output_id`  | ID del puerto MIDI elegido  |
+| Clave             | Contenido                         | Compartida con |
+|-------------------|-----------------------------------|----------------|
+| `metro_volumen`   | Volumen (0.0 – 1.0)               | `midi.php`     |
+| `metro_acento`    | Acento primer pulso (bool)        | `midi.php`     |
+| `midi_output_id`  | ID del puerto MIDI elegido        | `midi.php`     |
+| `midi_program`    | Último programa GM enviado        | `midi.php`     |
 
 #### 3.4 Edición de Tempo y Tono en sesión (solo Repertorio)
 
@@ -323,7 +326,7 @@ Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan aut
 
 **Requisito:** HTTPS + navegador Chromium-based.
 
-**Selector de dispositivo:** en la parte superior del widget del metrónomo. Solo aparece si `navigator.requestMIDIAccess` está disponible. Detecta dispositivos en hot-plug.
+**Selector de dispositivo:** en la parte superior del widget del metrónomo. Aparece siempre que el navegador soporte Web MIDI. Si el permiso está bloqueado, muestra un mensaje de error con instrucciones para Chrome y un botón "Reintentar conexión". Detecta dispositivos en hot-plug.
 
 **Envío automático de Program Change:**
 - Al pulsar "Iniciar" en una actividad de Repertorio
@@ -333,7 +336,45 @@ Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan aut
 
 ---
 
-### 4. Admin (`admin.php`)
+### 4. Piano MIDI (`midi.php`)
+
+Página dedicada al control del piano desde la tablet, sin necesidad de acceder al panel físico del instrumento.
+
+No requiere base de datos. Todo el estado se persiste en `localStorage`.
+
+#### 4.1 Conexión MIDI
+
+Idéntica lógica que `sesion.php`. Comparte la clave `midi_output_id` por lo que el dispositivo seleccionado en una página queda seleccionado en la otra. Al conectar un dispositivo se envía automáticamente el estado actual (programa, volumen y efectos).
+
+Si `requestMIDIAccess` falla:
+- **`SecurityError`**: permiso bloqueado — muestra instrucciones específicas para Chrome y botón "Reintentar conexión"
+- **Otros errores**: muestra el mensaje de error del navegador
+
+#### 4.2 Selección de instrumento
+
+- 128 instrumentos General MIDI organizados en 16 categorías de 8 voces cada una
+- Categorías: Piano, Cromatofón, Órgano, Guitarra, Bajo, Cuerdas, Conjunto, Metal, Lengüeta, Flauta, Sínt. Lead, Sínt. Pad, Sínt. FX, Étnicos, Percusión, Efectos SFX
+- Al pulsar un instrumento: envía `[0xC0, programa]` (Program Change, canal 1) y guarda en `localStorage` (`midi_program`)
+- La categoría y voz activa se restauran al cargar la página
+
+#### 4.3 Metrónomo
+
+Mismo motor que `sesion.php` (Web Audio API). BPM por defecto 80, recuperado de `localStorage` (`metro_bpm`). Comparte las claves `metro_volumen` y `metro_acento` con la sesión.
+
+#### 4.4 Controles MIDI (CC)
+
+| Control  | CC MIDI | Rango   | localStorage  |
+|----------|:-------:|---------|---------------|
+| Volumen  | CC 7    | 0–127   | `midi_cc7`    |
+| Reverb   | CC 91   | 0–127   | `midi_cc91`   |
+| Chorus   | CC 93   | 0–127   | `midi_cc93`   |
+| Paneo    | CC 10   | 0–127   | `midi_cc10`   |
+
+Todos se restauran de `localStorage` al cargar la página y se reenvían al piano al conectar un dispositivo.
+
+---
+
+### 5. Admin (`admin.php`)
 
 - **Configuración del metrónomo:** BPM por defecto para Técnica y Práctica, guardados en tabla `configuracion`
 - **Gestión de sesiones:** enlace a `gestionar_sesiones.php`
@@ -344,7 +385,7 @@ Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan aut
 
 ---
 
-### 5. Gestionar Sesiones (`gestionar_sesiones.php`)
+### 6. Gestionar Sesiones (`gestionar_sesiones.php`)
 
 CRUD de sesiones históricas:
 - Crear sesión manual con fecha, actividades, piezas y tiempos
@@ -456,7 +497,7 @@ ON DUPLICATE KEY UPDATE valor = '120';
 
 ### Añadir nuevo instrumento GM personalizado
 
-El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmInstrumentos`) y en `sesion.php` (PHP array `$gmInstrumentosSession` + JS array `GM_INSTRUMENTS`). Para modificar nombres, actualizar los tres lugares.
+El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmInstrumentos`), en `sesion.php` (PHP array `$gmInstrumentosSession` + JS array `GM_INSTRUMENTS`) y en `midi.php` (JS array `GM_INSTRUMENTS`). Para modificar nombres, actualizar los cuatro lugares.
 
 ---
 
@@ -476,6 +517,7 @@ El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmI
 | MIDI no disponible | HTTP en lugar de HTTPS | Servir la app por HTTPS |
 | MIDI no disponible | Firefox/DuckDuckGo | Usar Chrome, Brave o Vivaldi |
 | Piano no aparece en lista | Cable no seleccionado como MIDI | En Android, elegir modo MIDI al conectar USB |
+| Acceso MIDI bloqueado | Permiso denegado previamente en Chrome | Candado en la URL → MIDI → Permitir → "Reintentar conexión" |
 | Metrónomo sin sonido | Sin interacción previa del usuario | Pulsar cualquier botón antes de iniciar |
 | BPM por defecto incorrecto | Sin registros en `configuracion` | Guardar desde Admin → Configuración metrónomo |
 | Cronómetro no guarda | Error AJAX | Ver consola del navegador (F12) |
@@ -483,6 +525,42 @@ El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmI
 ---
 
 ## 📝 Changelog
+
+### v1.8 — Junio 2026
+
+**Técnica (ejercicios):**
+- ✅ Nuevo tipo de actividad `tecnica_ejercicios`: rotación de ejercicios por BPM ascendente/descendente según resultado (Bien/Neutro/Mal)
+- ✅ Tope de reintentos consecutivos en "Mal" antes de rotar al siguiente ejercicio (`TOPE_INTENTOS_MAL`)
+- ✅ Admin: reseteo masivo del BPM de todos los ejercicios de técnica a un valor común
+
+**Repertorio — mantenimiento de piezas:**
+- ✅ Campo `tempo_objetivo`: tempo al que se sugiere pasar una pieza a mantenimiento
+- ✅ Progresión automática mensual: sube tempo o gradúa a mantenimiento según media de fallos con metrónomo
+- ✅ Democión automática de mantenimiento a aprendizaje si los dos últimos registros de fallos son > 0
+- ✅ Columnas "Objetivo" y "Categoría" (Aprendizaje/Mantenimiento) en el listado de piezas
+- ✅ Algoritmo de sugerencia: decaimiento exponencial de fallos (semivida 15 días) en lugar de corte binario a 30 días; piezas en mantenimiento no compiten con las de aprendizaje activo
+
+**Sesión:**
+- ✅ Registro de fallos distingue pasada "libre" y "con metrónomo" (`tipo_pasada`)
+- ✅ Modal de confirmación reutilizable (sustituye a los `confirm()` nativos del navegador)
+
+### v1.7 — Junio 2026
+
+**Piano MIDI (`midi.php`) — nueva página:**
+- ✅ Selector de instrumento con 128 voces GM organizadas en 16 categorías
+- ✅ Envío de Program Change al pulsar cualquier instrumento
+- ✅ Controles de Volumen (CC7), Reverb (CC91), Chorus (CC93) y Paneo (CC10)
+- ✅ Metrónomo integrado con el mismo motor que `sesion.php`
+- ✅ Estado persistido en `localStorage`; se restaura y reenvía al piano al conectar
+- ✅ Enlace en el menú de navegación principal
+
+**MIDI — mejora de gestión de errores:**
+- ✅ Si el permiso MIDI está bloqueado, se muestra mensaje de error visible con instrucciones para Chrome
+- ✅ Botón "Reintentar conexión" sin necesidad de recargar la página
+- ✅ Aplicado tanto en `sesion.php` como en `midi.php`
+
+**Metrónomo:**
+- ✅ Botones del metrónomo más grandes para mayor comodidad en tablet
 
 ### v1.6 — Junio 2026
 
@@ -527,4 +605,4 @@ El array de 128 instrumentos GM está definido inline en `repertorio.php` (`$gmI
 
 ---
 
-**Piano Tracker v1.6 — Documentación Técnica**
+**Piano Tracker v1.8 — Documentación Técnica**

@@ -57,25 +57,45 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 echo json_encode(['success' => true]);
                 break;
 
+            case 'ejercicio_valorar':
+                $actividadId = intval($input['actividad_id']);
+                $ejercicioId = intval($input['ejercicio_id']);
+                $resultado   = in_array($input['resultado'] ?? '', ['bien', 'neutro', 'mal']) ? $input['resultado'] : 'mal';
+                $bpmActual   = intval($input['bpm_actual']);
+
+                if ($resultado === 'bien') {
+                    $nuevoBpm = $bpmActual + 1;
+                } elseif ($resultado === 'mal') {
+                    $nuevoBpm = max(20, $bpmActual - 1);
+                } else {
+                    $nuevoBpm = $bpmActual;
+                }
+
+                $stmt = $db->prepare("UPDATE ejercicios_tecnica SET bpm = :bpm WHERE id = :id");
+                $stmt->execute([':bpm' => $nuevoBpm, ':id' => $ejercicioId]);
+
+                $stmt = $db->prepare("INSERT INTO sesion_tecnica_ejercicios
+                                      (actividad_id, ejercicio_id, resultado, bpm_practicado)
+                                      VALUES (:act, :ej, :res, :bpm)");
+                $stmt->execute([':act' => $actividadId, ':ej' => $ejercicioId, ':res' => $resultado, ':bpm' => $bpmActual]);
+
+                echo json_encode(['success' => true, 'nuevo_bpm' => $nuevoBpm]);
+                break;
+
             case 'completar_pieza':
                 $actividadId = $input['actividad_id'];
                 $piezaId = $input['pieza_id'];
                 $fallos = $input['fallos'];
                 $tiempo = $input['tiempo'];
-                
+                $tipoPasada = in_array($input['tipo_pasada'] ?? '', ['libre', 'metronomo']) ? $input['tipo_pasada'] : 'metronomo';
+
                 // Guardar tiempo actual
                 $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
-                
+
                 // Registrar fallos
-                $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
-                                      VALUES (:act_id, :pieza_id, :cantidad, NOW())");
-                $stmt->execute([
-                    ':act_id' => $actividadId,
-                    ':pieza_id' => $piezaId,
-                    ':cantidad' => $fallos
-                ]);
-                
+                registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
+
                 // Obtener piezas ya practicadas en esta actividad
                 $stmt = $db->prepare("SELECT pieza_id FROM fallos WHERE actividad_id = :id");
                 $stmt->execute([':id' => $actividadId]);
@@ -92,6 +112,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                             'compositor' => $siguientePieza['compositor'],
                             'titulo' => $siguientePieza['titulo'],
                             'tempo' => $siguientePieza['tempo'],
+                            'estado' => $siguientePieza['estado'],
                         ]
                     ]);
                 } else {
@@ -107,22 +128,17 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $tiempo = $input['tiempo'];
                 $piezaId = $input['pieza_id'] ?? null;
                 $fallos = $input['fallos'] ?? 0;
-                
+                $tipoPasada = in_array($input['tipo_pasada'] ?? '', ['libre', 'metronomo']) ? $input['tipo_pasada'] : 'metronomo';
+
                 // Guardar tiempo
                 $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
-                
+
                 // Si hay pieza pendiente, registrar fallos
                 if ($piezaId) {
-                    $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
-                                          VALUES (:act_id, :pieza_id, :cantidad, NOW())");
-                    $stmt->execute([
-                        ':act_id' => $actividadId,
-                        ':pieza_id' => $piezaId,
-                        ':cantidad' => $fallos
-                    ]);
+                    registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
                 }
-                
+
                 // Marcar actividad como completada
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
                 $stmt->execute([':id' => $actividadId]);
@@ -157,22 +173,17 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
                 $tiempo = $input['tiempo'];
                 $piezaId = $input['pieza_id'] ?? null;
                 $fallos = $input['fallos'] ?? 0;
-                
+                $tipoPasada = in_array($input['tipo_pasada'] ?? '', ['libre', 'metronomo']) ? $input['tipo_pasada'] : 'metronomo';
+
                 // Guardar tiempo de actividad actual
                 $stmt = $db->prepare("UPDATE actividades SET tiempo_segundos = :tiempo WHERE id = :id");
                 $stmt->execute([':tiempo' => $tiempo, ':id' => $actividadId]);
-                
+
                 // Si hay pieza pendiente, registrar fallos
                 if ($piezaId) {
-                    $stmt = $db->prepare("INSERT INTO fallos (actividad_id, pieza_id, cantidad, fecha_registro) 
-                                          VALUES (:act_id, :pieza_id, :cantidad, NOW())");
-                    $stmt->execute([
-                        ':act_id' => $actividadId,
-                        ':pieza_id' => $piezaId,
-                        ':cantidad' => $fallos
-                    ]);
+                    registrarFallo($db, $actividadId, $piezaId, $fallos, $tipoPasada);
                 }
-                
+
                 // Marcar actividad actual como completada
                 $stmt = $db->prepare("UPDATE actividades SET estado = 'completada', fecha_fin = NOW() WHERE id = :id");
                 $stmt->execute([':id' => $actividadId]);
@@ -319,7 +330,7 @@ if (isset($_GET['sesion'])) {
     $sesion = $stmt->fetch();
     
     if ($sesion) {
-        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo
+        $stmt = $db->prepare("SELECT a.*, p.compositor, p.titulo, p.tempo, p.estado as pieza_estado
                               FROM actividades a
                               LEFT JOIN piezas p ON a.pieza_id = p.id
                               WHERE a.sesion_id = :id
@@ -359,6 +370,36 @@ if (isset($_GET['sesion'])) {
     }
 }
 
+// Cargar ejercicios de técnica pendientes si la actividad actual lo requiere
+$ejerciciosPendientes = [];
+$totalEjercicios = 0;
+$ejerciciosHechos = 0;
+if ($actividadActual && $actividadActual['tipo'] === 'tecnica_ejercicios') {
+    // Orden: primero el ejercicio con menos prácticas totales; en caso de empate, el de BPM más bajo
+    $stmt = $db->prepare("
+        SELECT et.*,
+               COALESCE(cuenta.veces, 0) AS veces_total
+        FROM ejercicios_tecnica et
+        LEFT JOIN (
+            SELECT ejercicio_id, COUNT(*) AS veces
+            FROM sesion_tecnica_ejercicios
+            GROUP BY ejercicio_id
+        ) cuenta ON cuenta.ejercicio_id = et.id
+        WHERE et.activo = 1
+          AND et.id NOT IN (
+              SELECT ejercicio_id FROM sesion_tecnica_ejercicios WHERE actividad_id = :act_id
+          )
+        ORDER BY veces_total ASC, et.bpm ASC, et.nombre ASC
+    ");
+    $stmt->execute([':act_id' => $actividadActual['id']]);
+    $ejerciciosPendientes = $stmt->fetchAll();
+
+    $stmt2 = $db->prepare("SELECT COUNT(*) FROM ejercicios_tecnica WHERE activo = 1");
+    $stmt2->execute();
+    $totalEjercicios = (int)$stmt2->fetchColumn();
+    $ejerciciosHechos = $totalEjercicios - count($ejerciciosPendientes);
+}
+
 // Calcular BPM por defecto del metrónomo para la actividad actual
 $defaultBpm = 92;
 if ($actividadActual) {
@@ -369,12 +410,17 @@ if ($actividadActual) {
         if ($cfgRow['clave'] === 'metro_bpm_tecnica')  $bpmTecnica  = intval($cfgRow['valor']);
         if ($cfgRow['clave'] === 'metro_bpm_practica') $bpmPractica = intval($cfgRow['valor']);
     }
-    if ($actividadActual['tipo'] === 'tecnica') {
+    if (in_array($actividadActual['tipo'], ['tecnica', 'tecnica_ejercicios', 'practica_tecnica'])) {
         $defaultBpm = $bpmTecnica;
     } elseif ($actividadActual['tipo'] === 'repertorio') {
         $defaultBpm = $actividadActual['tempo'] ?: $bpmPractica;
     } else {
         $defaultBpm = $bpmPractica;
+    }
+
+    // Para técnica ejercicios, el BPM inicial es el del primer ejercicio pendiente
+    if ($actividadActual['tipo'] === 'tecnica_ejercicios' && !empty($ejerciciosPendientes)) {
+        $defaultBpm = $ejerciciosPendientes[0]['bpm'];
     }
 }
 
@@ -496,6 +542,39 @@ include 'includes/header.php';
             }
             ?>
             
+            <!-- Controles para Técnica (ejercicios) -->
+            <?php if ($actividadActual['tipo'] === 'tecnica_ejercicios'): ?>
+            <div id="controlesTecnicaEjercicios">
+                <?php if (!empty($ejerciciosPendientes)): ?>
+                <div id="ejercicioCard" style="background:rgba(255,255,255,0.12); border-radius:8px; padding:1rem; margin:0.75rem 0;">
+                    <div id="ejercicioNombre" style="font-size:1.4rem; font-weight:bold; margin-bottom:0.4rem;"></div>
+                    <div style="font-size:1.1rem;">♩ = <span id="bpmValue"></span></div>
+                    <div id="ejercicioComentarios" style="font-size:0.85rem; opacity:0.7; margin-top:0.25rem;"></div>
+                </div>
+                <div id="ejercicioProgreso" style="margin-bottom:0.5rem; font-size:0.9rem; opacity:0.8;"></div>
+                <div class="timer-controls">
+                    <button id="btnIniciarTecnica" class="btn btn-success" onclick="iniciarTimer()" style="<?php echo $hayActividadesCompletadas ? 'display:none;' : ''; ?>"><?php echo $hayActividadesCompletadas ? 'Reanudar' : 'Iniciar'; ?></button>
+                    <button id="btnPausarTecnica" class="btn btn-warning" onclick="pausarTimer()" style="display:none;">Pausar</button>
+                    <button id="btnBien"   class="btn btn-success" style="font-size:1.4rem; padding:0.65rem 1.5rem;" onclick="valorarEjercicio('bien')">👍 Bien</button>
+                    <button id="btnNeutro" class="btn btn-warning" style="font-size:1.4rem; padding:0.65rem 1.5rem;" onclick="valorarEjercicio('neutro')">↔️ Neutro</button>
+                    <button id="btnMal"    class="btn btn-danger"  style="font-size:1.4rem; padding:0.65rem 1.5rem;" onclick="valorarEjercicio('mal')">👎 Mal</button>
+                    <?php if (!$esUltimaActividad): ?>
+                    <button class="btn btn-primary" onclick="siguienteActividad()">Siguiente actividad</button>
+                    <?php endif; ?>
+                    <button class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
+                </div>
+                <?php else: ?>
+                <div class="alert alert-success" style="margin:0.75rem 0;">¡Todos los ejercicios completados!</div>
+                <div class="timer-controls">
+                    <?php if (!$esUltimaActividad): ?>
+                    <button class="btn btn-primary" onclick="siguienteActividad()">Siguiente actividad</button>
+                    <?php endif; ?>
+                    <button class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php else: ?>
+
             <!-- Botones para actividades normales -->
             <div class="timer-controls" id="controlesNormales" style="<?php echo $actividadActual['tipo'] === 'repertorio' ? 'display:none;' : ''; ?>">
                 <button id="btnIniciar" class="btn btn-success" onclick="iniciarTimer()" style="<?php echo $hayActividadesCompletadas ? 'display:none;' : ''; ?>"><?php echo $hayActividadesCompletadas ? 'Reanudar' : 'Iniciar'; ?></button>
@@ -505,6 +584,7 @@ include 'includes/header.php';
                 <?php endif; ?>
                 <button id="btnFinalizar" class="btn btn-danger" onclick="finalizarSesion()">Finalizar sesión</button>
             </div>
+            <?php endif; ?>
 
             <!-- Botones específicos para Repertorio -->
             <div class="timer-controls" id="controlesRepertorio" style="<?php echo $actividadActual['tipo'] !== 'repertorio' ? 'display:none;' : ''; ?>">
@@ -521,6 +601,7 @@ include 'includes/header.php';
             <div class="mt-1">
                 <label for="fallos" style="color: white; font-size: 1.1rem;">Fallos en esta pieza:</label>
                 <input type="number" id="fallos" min="0" value="0" style="width: 120px; text-align: center; font-size: 1.5rem; padding: 0.5rem;">
+                <input type="hidden" id="piezaEstado" value="<?php echo htmlspecialchars($actividadActual['pieza_estado'] ?? 'aprendizaje'); ?>">
                 <div style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">
                     <span id="piezasTocadas">Piezas completadas: 0</span>
                 </div>
@@ -675,8 +756,9 @@ include 'includes/header.php';
                     <label for="tipoActividad">Tipo de actividad</label>
                     <select id="tipoActividad">
                         <option value="calentamiento">Calentamiento</option>
-                        <option value="tecnica">Técnica</option>
-                        <option value="practica">Práctica</option>
+                        <option value="tecnica_ejercicios">Técnica</option>
+                        <option value="practica_tecnica">Práctica de técnica</option>
+                        <option value="practica">Práctica de repertorio</option>
                         <option value="repertorio">Repertorio</option>
                         <option value="improvisacion">Improvisación</option>
                         <option value="composicion">Composición</option>
@@ -755,6 +837,117 @@ setTimeout(function() {
 }, 500);
 <?php endif; ?>
 
+<?php if ($actividadActual['tipo'] === 'tecnica_ejercicios' && !empty($ejerciciosPendientes)): ?>
+// === TÉCNICA: EJERCICIOS ===
+const ejerciciosTecnica = <?php echo json_encode(array_values($ejerciciosPendientes)); ?>;
+const totalEjerciciosTecnica = <?php echo $totalEjercicios; ?>;
+let ejercicioActualIdx = 0;
+let intentosMalSeguidos = 0;
+const TOPE_INTENTOS_MAL = 2;
+const ejerciciosHechosInicio = <?php echo $ejerciciosHechos; ?>;
+
+function mostrarEjercicioActual() {
+    if (ejercicioActualIdx >= ejerciciosTecnica.length) return;
+    const ej = ejerciciosTecnica[ejercicioActualIdx];
+    document.getElementById('ejercicioNombre').textContent = ej.nombre;
+    document.getElementById('bpmValue').textContent = ej.bpm;
+    document.getElementById('ejercicioComentarios').textContent = ej.comentarios || '';
+    const posicion = ejerciciosHechosInicio + ejercicioActualIdx + 1;
+    document.getElementById('ejercicioProgreso').textContent = posicion + ' / ' + totalEjerciciosTecnica;
+    metronomeSetBpm(parseInt(ej.bpm));
+    document.getElementById('btnBien').disabled   = false;
+    document.getElementById('btnNeutro').disabled = false;
+    document.getElementById('btnMal').disabled    = false;
+}
+
+function valorarEjercicio(resultado) {
+    const ej = ejerciciosTecnica[ejercicioActualIdx];
+
+    document.getElementById('btnBien').disabled   = true;
+    document.getElementById('btnNeutro').disabled = true;
+    document.getElementById('btnMal').disabled    = true;
+
+    fetch('sesion.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+            accion: 'ejercicio_valorar',
+            actividad_id: document.getElementById('actividadId').value,
+            ejercicio_id: ej.id,
+            resultado: resultado,
+            bpm_actual: parseInt(ej.bpm)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            document.getElementById('btnBien').disabled   = false;
+            document.getElementById('btnNeutro').disabled = false;
+            document.getElementById('btnMal').disabled    = false;
+            alert('Error: ' + (data.error || 'desconocido'));
+            return;
+        }
+
+        ejerciciosTecnica[ejercicioActualIdx].bpm = data.nuevo_bpm;
+
+        // Tope de reintentos: si sale "mal", se repite el mismo ejercicio hasta
+        // TOPE_INTENTOS_MAL veces seguidas antes de pasar al siguiente, para no
+        // dejar de rotar el resto de ejercicios por uno atascado.
+        if (resultado === 'mal') {
+            intentosMalSeguidos++;
+        } else {
+            intentosMalSeguidos = 0;
+        }
+
+        if (resultado !== 'mal' || intentosMalSeguidos >= TOPE_INTENTOS_MAL) {
+            intentosMalSeguidos = 0;
+            ejercicioActualIdx++;
+        }
+
+        if (ejercicioActualIdx >= ejerciciosTecnica.length) {
+            // Todos los ejercicios completados: avanzar a la siguiente actividad
+            if (timerActivo) pausarTimer();
+            fetch('sesion.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({
+                    accion: 'siguiente',
+                    actividad_id: document.getElementById('actividadId').value,
+                    tiempo: tiempoActual,
+                    pieza_id: null,
+                    fallos: 0
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.hay_siguiente) {
+                        location.reload();
+                    } else {
+                        finalizarSesionInterno(true);
+                    }
+                }
+            });
+        } else {
+            mostrarEjercicioActual();
+        }
+    })
+    .catch(() => {
+        document.getElementById('btnBien').disabled   = false;
+        document.getElementById('btnNeutro').disabled = false;
+        document.getElementById('btnMal').disabled    = false;
+    });
+}
+
+// Diferir para que los let del metrónomo estén inicializados antes de llamar metronomeSetBpm
+setTimeout(() => {
+    mostrarEjercicioActual();
+    <?php if ($hayActividadesCompletadas): ?>
+    iniciarTimer();
+    <?php endif; ?>
+}, 0);
+<?php endif; ?>
+
 function iniciarTimer() {
     if (timerActivo) return;
 
@@ -803,10 +996,17 @@ function pausarTimer() {
 }
 
 function getBotonesTimer() {
-    const esRepertorio = document.getElementById('controlesRepertorio').style.display !== 'none';
+    if (document.getElementById('btnPausarTecnica')) {
+        return {
+            btnIniciar: document.getElementById('btnIniciarTecnica'),
+            btnPausar:  document.getElementById('btnPausarTecnica')
+        };
+    }
+    const esRepertorio = document.getElementById('controlesRepertorio') &&
+                         document.getElementById('controlesRepertorio').style.display !== 'none';
     return {
         btnIniciar: esRepertorio ? document.getElementById('btnIniciarRep') : document.getElementById('btnIniciar'),
-        btnPausar: esRepertorio ? document.getElementById('btnPausarRep') : document.getElementById('btnPausar')
+        btnPausar:  esRepertorio ? document.getElementById('btnPausarRep')  : document.getElementById('btnPausar')
     };
 }
 
@@ -867,21 +1067,28 @@ function guardarNotas() {
     });
 }
 
+function obtenerTipoPasada() {
+    const estado = document.getElementById('piezaEstado')?.value || 'aprendizaje';
+    return estado === 'mantenimiento' ? 'libre' : 'metronomo';
+}
+
+function fijarTipoPasadaPorEstado(estadoPieza) {
+    const input = document.getElementById('piezaEstado');
+    if (input) input.value = estadoPieza;
+}
+
 function completarPieza() {
     const fallos = document.getElementById('fallos')?.value || 0;
     const piezaId = document.getElementById('piezaId').value;
-    
+
     if (!piezaId) {
         alert('No hay pieza seleccionada');
         return;
     }
-    
-    if (!confirm('¿Marcar esta pieza como completada y cargar la siguiente?')) {
-        return;
-    }
-    
+
+    confirmar('¿Marcar esta pieza como completada y cargar la siguiente?', function() {
     guardarTiempo();
-    
+
     fetch('sesion.php', {
         method: 'POST',
         headers: {
@@ -893,23 +1100,25 @@ function completarPieza() {
             actividad_id: document.getElementById('actividadId').value,
             pieza_id: piezaId,
             fallos: parseInt(fallos),
-            tiempo: tiempoActual
+            tiempo: tiempoActual,
+            tipo_pasada: obtenerTipoPasada()
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success && data.siguiente_pieza) {
             document.getElementById('piezaId').value = data.siguiente_pieza.id;
-            
+
             // Construir el texto con tempo si existe
             let textoInfo = '<br><small>' + data.siguiente_pieza.compositor + ' - ' + data.siguiente_pieza.titulo;
             if (data.siguiente_pieza.tempo) {
                 textoInfo += ' (♩ = ' + data.siguiente_pieza.tempo + ')';
             }
             textoInfo += '</small>';
-            
+
             document.getElementById('piezaActualInfo').innerHTML = textoInfo;
             document.getElementById('fallos').value = 0;
+            fijarTipoPasadaPorEstado(data.siguiente_pieza.estado);
             const tempoInput = document.getElementById('tempoEditar');
             if (tempoInput) {
                 tempoInput.value = data.siguiente_pieza.tempo || '';
@@ -941,13 +1150,11 @@ function completarPieza() {
     .catch(error => {
         alert('Error de conexión: ' + error);
     });
+    });
 }
 
 function terminarRepertorio() {
-    if (!confirm('¿Finalizar la actividad de Repertorio y pasar a la siguiente actividad?')) {
-        return;
-    }
-    
+    confirmar('¿Finalizar la actividad de Repertorio y pasar a la siguiente actividad?', function() {
     const piezaId = document.getElementById('piezaId').value;
     const fallos = piezaId ? (document.getElementById('fallos')?.value || 0) : 0;
     
@@ -966,7 +1173,8 @@ function terminarRepertorio() {
             actividad_id: document.getElementById('actividadId').value,
             tiempo: tiempoActual,
             pieza_id: piezaId,
-            fallos: parseInt(fallos)
+            fallos: parseInt(fallos),
+            tipo_pasada: obtenerTipoPasada()
         })
     })
     .then(response => response.json())
@@ -986,13 +1194,11 @@ function terminarRepertorio() {
             alert('Error al finalizar repertorio: ' + (data.error || 'Desconocido'));
         }
     });
+    });
 }
 
 function siguienteActividad() {
-    if (!confirm('¿Pasar a la siguiente actividad? Se guardará el progreso actual.')) {
-        return;
-    }
-    
+    confirmar('¿Pasar a la siguiente actividad? Se guardará el progreso actual.', function() {
     if (timerActivo) {
         pausarTimer();
     }
@@ -1011,7 +1217,8 @@ function siguienteActividad() {
             actividad_id: document.getElementById('actividadId').value,
             tiempo: tiempoActual,
             pieza_id: piezaId,
-            fallos: fallos
+            fallos: fallos,
+            tipo_pasada: obtenerTipoPasada()
         })
     })
     .then(response => response.json())
@@ -1032,13 +1239,13 @@ function siguienteActividad() {
             alert('Error al avanzar: ' + (data.error || 'Desconocido'));
         }
     });
+    });
 }
 
 function finalizarSesion() {
-    if (!confirm('¿Finalizar la sesión? Esto guardará todo el progreso.')) {
-        return;
-    }
-    finalizarSesionInterno(false);
+    confirmar('¿Finalizar la sesión? Esto guardará todo el progreso.', function() {
+        finalizarSesionInterno(false);
+    });
 }
 
 function finalizarSesionInterno(autoFinalizado) {
@@ -1061,7 +1268,8 @@ function finalizarSesionInterno(autoFinalizado) {
             actividad_id: document.getElementById('actividadId').value,
             tiempo: tiempoActual,
             pieza_id: piezaId,
-            fallos: fallos
+            fallos: fallos,
+            tipo_pasada: obtenerTipoPasada()
         })
     })
     .then(response => response.json())

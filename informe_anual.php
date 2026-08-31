@@ -72,15 +72,15 @@ $todosMeses = range(1, 12);
 
 // Obtener actividades por tipo y mes
 $stmt = $db->prepare("
-    SELECT 
-        a.tipo,
+    SELECT
+        CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END as tipo,
         MONTH(s.fecha) as mes,
         SUM(a.tiempo_segundos) as tiempo_total,
         COUNT(DISTINCT DATE(s.fecha)) as dias_practicados
     FROM actividades a
     JOIN sesiones s ON a.sesion_id = s.id
     WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
-    GROUP BY a.tipo, MONTH(s.fecha)
+    GROUP BY CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END, MONTH(s.fecha)
 ");
 $stmt->execute([':fecha_inicio' => $fechaInicio, ':fecha_fin' => $fechaFin]);
 $datosActividades = $stmt->fetchAll();
@@ -120,10 +120,13 @@ $stmt = $db->prepare("SELECT COUNT(DISTINCT DATE(s.fecha)) as total_dias FROM se
 $stmt->execute([':fi' => $fechaInicio, ':ff' => $fechaFin]);
 $diasTotalAnio = (int)$stmt->fetch()['total_dias'];
 
-// Obtener piezas practicadas con media de fallos por mes
+// Obtener piezas practicadas con media de fallos por mes.
+// Solo se cuentan los fallos "con metrónomo" (ver nota en informe_mensual.php):
+// coincide con el criterio automático de progresión de tempo/mantenimiento.
 $stmt = $db->prepare("
-    SELECT 
-        p.id, p.compositor, p.titulo, p.libro, p.grado, p.instrumento, p.tempo, p.ponderacion,
+    SELECT
+        p.id, p.compositor, p.titulo, p.libro, p.grado, p.instrumento, p.tempo,
+        p.tempo_objetivo, p.estado, p.ponderacion,
         MONTH(s.fecha) as mes,
         SUM(f.cantidad) as total_fallos,
         COUNT(DISTINCT DATE(f.fecha_registro)) as dias_practicados
@@ -131,7 +134,7 @@ $stmt = $db->prepare("
     JOIN fallos f ON p.id = f.pieza_id
     JOIN actividades a ON f.actividad_id = a.id
     JOIN sesiones s ON a.sesion_id = s.id
-    WHERE s.fecha BETWEEN :fi AND :ff AND a.tipo = 'repertorio'
+    WHERE s.fecha BETWEEN :fi AND :ff AND a.tipo = 'repertorio' AND f.tipo_pasada = 'metronomo'
     GROUP BY p.id, MONTH(s.fecha)
     ORDER BY p.libro, p.grado, p.compositor, p.titulo
 ");
@@ -149,6 +152,8 @@ foreach ($datosPiezas as $dato) {
             'grado' => $dato['grado'],
             'instrumento' => $dato['instrumento'],
             'tempo' => $dato['tempo'],
+            'tempo_objetivo' => $dato['tempo_objetivo'],
+            'estado' => $dato['estado'],
             'ponderacion' => $dato['ponderacion'],
             'medias_por_mes' => array_fill(1, 12, null),
             'dias_practicados_anio' => 0,
@@ -452,6 +457,8 @@ include 'includes/header.php';
                     <th class="col-fija-header">Compositor</th>
                     <th class="col-fija-header">Nombre</th>
                     <th class="col-fija-header">Tempo</th>
+                    <th class="col-fija-header">Objetivo</th>
+                    <th class="col-fija-header">Categoría</th>
                     <th class="col-fija-header">Instr</th>
                     <th class="col-fija-header">Pond</th>
                     <?php foreach ($todosMeses as $mes): ?>
@@ -479,6 +486,12 @@ include 'includes/header.php';
                     </td>
                     <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo $pieza['tempo'] ? '♩=' . $pieza['tempo'] : '-'; ?>
+                    </td>
+                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
+                        <?php echo $pieza['tempo_objetivo'] ? '♩=' . $pieza['tempo_objetivo'] : '-'; ?>
+                    </td>
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
+                        <?php echo $pieza['estado'] === 'mantenimiento' ? '🛠 Mant.' : '📈 Aprend.'; ?>
                     </td>
                     <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo htmlspecialchars($pieza['instrumento'] ?? 'Piano'); ?>
@@ -587,6 +600,9 @@ include 'includes/header.php';
     </script>
     
     <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem;">
+        <p style="margin-top: 0; color: #666;">
+            <em><strong>Nota:</strong> los fallos y medias de esta tabla solo cuentan la pasada <strong>con metrónomo</strong>; el pase libre previo no se incluye. Es el mismo criterio que usa la app para sugerir subidas de tempo y el paso a mantenimiento.</em>
+        </p>
         <strong>📊 Leyenda de colores:</strong>
         <div style="margin-top: 0.75rem;">
             <strong>Filas según media anual:</strong>

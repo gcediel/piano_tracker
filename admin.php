@@ -157,6 +157,19 @@ foreach ($stmt->fetchAll() as $row) {
     $configMetro[$row['clave']] = intval($row['valor']);
 }
 
+// Resetear BPM de todos los ejercicios de técnica
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resetear_bpm_tecnica'])) {
+    $bpmReset = intval($_POST['bpm_reset'] ?? 120);
+    if ($bpmReset < 20 || $bpmReset > 300) {
+        $error = 'El BPM debe estar entre 20 y 300.';
+    } else {
+        $stmt = $db->prepare("UPDATE ejercicios_tecnica SET bpm = :bpm");
+        $stmt->execute([':bpm' => $bpmReset]);
+        $afectados = $stmt->rowCount();
+        $mensaje = "✓ Se han reseteado $afectados ejercicios de técnica a {$bpmReset} BPM.";
+    }
+}
+
 // Cambiar contraseña
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_password'])) {
     $passwordActual = $_POST['password_actual'] ?? '';
@@ -219,6 +232,28 @@ include 'includes/header.php';
 </div>
 
 <div class="card">
+    <h2>Resetear BPM de ejercicios de técnica</h2>
+    <p>Establece el mismo BPM para todos los ejercicios de técnica a la vez.</p>
+
+    <form method="POST" action="" id="form-bpm-reset">
+        <input type="hidden" name="resetear_bpm_tecnica" value="1">
+        <div class="form-inline">
+            <div class="form-group">
+                <label for="bpm_reset">BPM destino</label>
+                <input type="number" id="bpm_reset" name="bpm_reset"
+                       min="20" max="300" value="120" required style="width:80px;">
+            </div>
+        </div>
+        <div class="mt-1">
+            <button type="button" class="btn btn-warning"
+                    onclick="confirmar('¿Resetear el BPM de TODOS los ejercicios de técnica a ' + document.getElementById('bpm_reset').value + ' BPM?', function(){ document.getElementById('form-bpm-reset').submit(); })">
+                Resetear todos a este BPM
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
     <h2>Cambiar contraseña</h2>
     
     <form method="POST" action="">
@@ -265,7 +300,7 @@ include 'includes/header.php';
     <h2>📥 Importar base de datos</h2>
     <p><strong>⚠️ ADVERTENCIA:</strong> Esta acción reemplazará TODOS los datos actuales. Haz un backup primero.</p>
     
-    <form method="POST" enctype="multipart/form-data" onsubmit="return confirm('¿SEGURO que quieres importar este backup? Se perderán todos los datos actuales.');">
+    <form method="POST" enctype="multipart/form-data" data-confirm="¿SEGURO que quieres importar este backup? Se perderán todos los datos actuales.">
         <div class="form-group">
             <label for="sql_file">Selecciona archivo SQL de backup</label>
             <input type="file" id="sql_file" name="sql_file" accept=".sql" required>
@@ -289,7 +324,7 @@ include 'includes/header.php';
         💡 <strong>Recomendación:</strong> Exporta un backup SQL antes de borrar (ver sección anterior).
     </p>
     
-    <form method="POST" onsubmit="return confirm('⚠️⚠️⚠️ CONFIRMA QUE QUIERES BORRAR TODOS LOS DATOS ⚠️⚠️⚠️\n\n¿Estás ABSOLUTAMENTE SEGURO?\n\nEsta acción NO se puede deshacer.\n\nSe perderán:\n• Todas las sesiones\n• Todas las actividades\n• Todos los registros de fallos\n• Todo el repertorio\n\n¿Continuar con el borrado?');">
+    <form method="POST" data-confirm="⚠️ ¿BORRAR TODOS LOS DATOS? Esta acción es PERMANENTE e irreversible.\n\nSe perderán:\n• Todas las sesiones\n• Todas las actividades\n• Todos los registros de fallos\n• Todo el repertorio">
         <input type="hidden" name="borrar_datos" value="1">
         <button type="submit" class="btn btn-danger" style="font-size: 1.1rem; padding: 0.8rem 1.5rem;">
             ☠️ SÍ, BORRAR TODOS LOS DATOS

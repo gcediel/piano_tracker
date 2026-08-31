@@ -1,0 +1,269 @@
+<%- include('partials/header') %>
+
+<style>
+.container { max-width: none !important; width: 100% !important; padding: 0 10px !important; }
+.card { max-width: none !important; }
+* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+@media print {
+  @page { size: landscape; margin: 1cm; }
+  body { font-size: 9pt; background: white; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  table, tr, td, th { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  header, footer, .nav-menu, .btn, .no-print { display: none !important; }
+  .card { box-shadow: none; page-break-inside: avoid; margin-bottom: 1rem; }
+  table { page-break-inside: auto; font-size: 8pt; }
+  .titulo-informe { text-align: center; margin-bottom: 15px; }
+}
+.tabla-horizontal { width: 100%; overflow-x: auto; margin-top: 1rem; }
+.tabla-horizontal table { border-collapse: collapse; min-width: 100%; font-size: 0.85rem; }
+.tabla-horizontal th {
+  background: var(--primary); color: white; padding: 0.4rem 0.3rem; text-align: center;
+  font-size: 0.75rem; white-space: nowrap; position: sticky; top: 0; z-index: 10;
+}
+.tabla-horizontal td { padding: 0.3rem 0.2rem; text-align: center; border: 1px solid #ddd; font-size: 0.75rem; }
+.col-fija-header { background: var(--primary) !important; min-width: 60px; }
+.col-fija { background: #f8f9fa; font-weight: 500; }
+.col-estadistica { background: var(--primary) !important; font-weight: bold; min-width: 50px; }
+.celda-fallo-excelente { background: #2E5F8A; color: white; font-weight: bold; }
+.celda-fallo-muy-bien  { background: #4A7BA7; color: white; font-weight: bold; }
+.celda-fallo-bien       { background: #A3C1DA; color: black; font-weight: bold; }
+.celda-fallo-aceptable  { background: #D4E89E; color: black; font-weight: bold; }
+.celda-fallo-mejorable  { background: #9B9B9B; color: white; font-weight: bold; }
+.celda-fallo-atencion   { background: #E57373; color: white; font-weight: bold; }
+.celda-vacia { background: #f0f0f0; color: #999; }
+</style>
+
+<div style="display:flex;gap:1rem;margin-bottom:1rem;" class="no-print">
+  <button onclick="window.print()" class="btn btn-primary btn-imprimir">🖨️ Imprimir / Guardar PDF</button>
+  <a href="/informes" class="btn btn-secondary">← Volver a Informes</a>
+</div>
+
+<div class="card no-print">
+  <h2>Seleccionar año para informe</h2>
+  <form method="GET" action="/informe-anual" class="form-inline">
+    <div class="form-group">
+      <label for="anio">Año</label>
+      <select name="anio" id="anio">
+        <% for (let y = new Date().getFullYear(); y >= 2020; y--) { %>
+          <option value="<%= y %>" <%= y === anio ? 'selected' : '' %>><%= y %></option>
+        <% } %>
+      </select>
+    </div>
+    <div class="form-group">
+      <button type="submit" class="btn btn-primary">Generar informe</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="titulo-informe">
+    <h1>📊 Informe de Práctica de Piano</h1>
+    <h2>Año <%= anio %></h2>
+    <p style="color:#666;">Tiempo total del año: <strong><%= h.formatearTiempoBreve(tiempoTotalAnio) %></strong></p>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Tiempo de práctica por tipo de actividad</h3>
+  <div class="tabla-horizontal">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-fija-header">Actividad</th>
+          <% todosMeses.forEach(m => { %><th><%= MESES_CORTOS[m-1] %></th><% }) %>
+          <th class="col-estadistica">Días</th>
+          <th class="col-estadistica">Total</th>
+          <th class="col-estadistica">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% actividades.forEach(act => { %>
+        <tr>
+          <td class="col-fija" style="text-align:left;padding-left:0.5rem;"><%= act.nombre %></td>
+          <% todosMeses.forEach(m => { const tiempo = act.tiempos_por_mes[m]; const dias = act.dias_por_mes[m]; %>
+          <td class="<%= tiempo > 0 ? '' : 'celda-vacia' %>">
+            <%= tiempo > 0 ? h.formatearTiempoBreve(tiempo) : '-' %>
+            <% if (dias > 0) { %><br><small style="font-size:0.65rem;opacity:0.7;">(<%= dias %>d)</small><% } %>
+          </td>
+          <% }) %>
+          <td style="background:#e8f5e9;font-weight:bold;"><%= act.total_dias %></td>
+          <td style="background:#e3f2fd;font-weight:bold;"><%= h.formatearTiempoBreve(act.total_tiempo) %></td>
+          <td style="background:#fff3e0;font-weight:bold;"><%= tiempoTotalAnio > 0 ? Math.round((act.total_tiempo / tiempoTotalAnio) * 1000) / 10 : 0 %>%</td>
+        </tr>
+        <% }) %>
+        <tr style="background:#f5f5f5;font-weight:bold;border-top:3px solid var(--primary);">
+          <td class="col-fija" style="text-align:left;padding-left:0.5rem;">TOTAL</td>
+          <% todosMeses.forEach(m => { let tiempoMes = 0; actividades.forEach(act => { tiempoMes += act.tiempos_por_mes[m]; }); %>
+          <td><%= tiempoMes > 0 ? h.formatearTiempoBreve(tiempoMes) : '-' %></td>
+          <% }) %>
+          <td style="background:#c8e6c9;"><%= diasTotalAnio %></td>
+          <td style="background:#bbdefb;"><%= h.formatearTiempoBreve(tiempoTotalAnio) %></td>
+          <td style="background:#ffe0b2;">100%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:2rem;padding:1.5rem;background:white;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+    <h4 style="margin-top:0;margin-bottom:1rem;text-align:center;">📊 Distribución de Tiempo por Tipo de Actividad</h4>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2rem;">
+      <div style="position:relative;width:300px;height:300px;">
+        <canvas id="chartActividades" width="300" height="300"></canvas>
+      </div>
+      <div style="flex:1;min-width:250px;">
+        <div style="display:grid;gap:0.5rem;">
+          <% actividades.forEach(act => { if (act.total_tiempo === 0) return;
+             const pct = tiempoTotalAnio > 0 ? Math.round((act.total_tiempo / tiempoTotalAnio) * 1000) / 10 : 0; %>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <div style="width:20px;height:20px;background:<%= COLORES_ACTIVIDADES[act.tipo] %>;border:1px solid #999;border-radius:3px;"></div>
+            <span style="flex:1;"><strong><%= act.nombre %>:</strong> <%= h.formatearTiempoBreve(act.total_tiempo) %> (<%= pct %>%)</span>
+          </div>
+          <% }) %>
+          <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:2px solid #ddd;">
+            <strong>Total: <%= h.formatearTiempoBreve(tiempoTotalAnio) %></strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    const canvas = document.getElementById('chartActividades');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const centerX = 150, centerY = 150, radius = 120;
+    const data = <%- JSON.stringify(actividades.filter(a => a.total_tiempo > 0).map(a => ({ value: a.total_tiempo, color: COLORES_ACTIVIDADES[a.tipo], label: a.nombre }))) %>;
+    const total = data.reduce((s, i) => s + i.value, 0);
+    let currentAngle = -Math.PI / 2;
+    data.forEach(item => {
+      const sliceAngle = (item.value / total) * 2 * Math.PI;
+      ctx.beginPath(); ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+      ctx.closePath(); ctx.fillStyle = item.color; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      currentAngle += sliceAngle;
+    });
+    ctx.beginPath(); ctx.arc(centerX, centerY, radius * 0.5, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+    const horas = Math.floor(total / 3600), minutos = Math.floor((total % 3600) / 60);
+    ctx.fillStyle = '#333'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(horas > 0 ? (horas + 'h ' + minutos + 'm') : (minutos + ' min'), centerX, centerY - 5);
+    ctx.font = '12px Arial'; ctx.fillText('total', centerX, centerY + 15);
+  })();
+  </script>
+</div>
+
+<% if (piezas.length) { %>
+<div class="card">
+  <h3>Piezas de Repertorio</h3>
+  <div class="tabla-horizontal">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-fija-header">Libro</th>
+          <th class="col-fija-header">Gr</th>
+          <th class="col-fija-header">Compositor</th>
+          <th class="col-fija-header">Nombre</th>
+          <th class="col-fija-header">Tempo</th>
+          <th class="col-fija-header">Objetivo</th>
+          <th class="col-fija-header">Categoría</th>
+          <th class="col-fija-header">Instr</th>
+          <th class="col-fija-header">Pond</th>
+          <% todosMeses.forEach(m => { %><th><%= MESES_CORTOS[m-1] %></th><% }) %>
+          <th class="col-estadistica">Días</th>
+          <th class="col-estadistica">Media</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% piezas.forEach(pieza => { %>
+        <tr style="background:<%= getColorFallos(pieza.media_fallos_anio) %>;color:<%= getColorTextoFallos(pieza.media_fallos_anio) %>;">
+          <td class="col-fija" style="font-size:0.75rem;white-space:normal;color:black;"><%= pieza.libro || '-' %></td>
+          <td class="col-fija" style="text-align:center;white-space:normal;color:black;"><%= pieza.grado || '-' %></td>
+          <td class="col-fija" style="white-space:normal;color:black;"><%= pieza.compositor %></td>
+          <td class="col-fija" style="white-space:normal;color:black;"><strong><%= pieza.titulo %></strong></td>
+          <td class="col-fija" style="text-align:center;font-size:0.75rem;white-space:normal;color:black;"><%= pieza.tempo ? '♩=' + pieza.tempo : '-' %></td>
+          <td class="col-fija" style="text-align:center;font-size:0.75rem;white-space:normal;color:black;"><%= pieza.tempo_objetivo ? '♩=' + pieza.tempo_objetivo : '-' %></td>
+          <td class="col-fija" style="font-size:0.75rem;white-space:normal;color:black;"><%= pieza.estado === 'mantenimiento' ? '🛠 Mant.' : '📈 Aprend.' %></td>
+          <td class="col-fija" style="font-size:0.75rem;white-space:normal;color:black;"><%= pieza.instrumento || 'Piano' %></td>
+          <td class="col-fija" style="text-align:center;font-size:0.75rem;white-space:normal;color:black;"><%= Number(pieza.ponderacion).toFixed(2) %></td>
+          <% todosMeses.forEach(m => { const media = pieza.medias_por_mes[m]; %>
+          <td class="<%= claseCeldaMedia(media) %>"><%= media !== null ? Number(media).toFixed(2) : '-' %></td>
+          <% }) %>
+          <td style="background:#e8f5e9;font-weight:bold;color:black;"><%= pieza.dias_practicados_anio %></td>
+          <td style="font-weight:bold;"><%= pieza.media_fallos_anio.toFixed(2) %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:2rem;padding:1.5rem;background:white;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+    <h4 style="margin-top:0;margin-bottom:1rem;text-align:center;">📊 Distribución de Piezas por Rendimiento Anual</h4>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2rem;">
+      <div style="position:relative;width:300px;height:300px;">
+        <canvas id="chartPiezas" width="300" height="300"></canvas>
+      </div>
+      <div style="flex:1;min-width:250px;">
+        <div style="display:grid;gap:0.5rem;">
+          <% Object.values(categorias).forEach(cat => { if (!cat.count) return;
+             const pct = totalPiezas > 0 ? Math.round((cat.count / totalPiezas) * 1000) / 10 : 0; %>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <div style="width:20px;height:20px;background:<%= cat.color %>;border:1px solid #999;border-radius:3px;"></div>
+            <span style="flex:1;"><strong><%= cat.label %>:</strong> <%= cat.count %> pieza<%= cat.count !== 1 ? 's' : '' %> (<%= pct %>%)</span>
+          </div>
+          <% }) %>
+          <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:2px solid #ddd;">
+            <strong>Total: <%= totalPiezas %> pieza<%= totalPiezas !== 1 ? 's' : '' %></strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    const canvas = document.getElementById('chartPiezas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const centerX = 150, centerY = 150, radius = 120;
+    const data = <%- JSON.stringify(Object.values(categorias).filter(c => c.count > 0).map(c => ({ value: c.count, color: c.color }))) %>;
+    const total = data.reduce((s, i) => s + i.value, 0);
+    let currentAngle = -Math.PI / 2;
+    data.forEach(item => {
+      const sliceAngle = (item.value / total) * 2 * Math.PI;
+      ctx.beginPath(); ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+      ctx.closePath(); ctx.fillStyle = item.color; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      currentAngle += sliceAngle;
+    });
+    ctx.beginPath(); ctx.arc(centerX, centerY, radius * 0.5, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.fillStyle = '#333'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(total, centerX, centerY - 10);
+    ctx.font = '14px Arial'; ctx.fillText('piezas', centerX, centerY + 15);
+  })();
+  </script>
+
+  <div style="margin-top:1.5rem;padding:1rem;background:#f8f9fa;border-radius:4px;font-size:0.85rem;">
+    <p style="margin-top:0;color:#666;"><em><strong>Nota:</strong> los fallos y medias de esta tabla solo cuentan la pasada <strong>con metrónomo</strong>; el pase libre previo no se incluye. Es el mismo criterio que usa la app para sugerir subidas de tempo y el paso a mantenimiento.</em></p>
+    <strong>📊 Leyenda de colores:</strong>
+    <div style="margin-top:0.75rem;">
+      <strong>Filas según media anual:</strong>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-top:0.5rem;">
+        <div><span style="display:inline-block;width:30px;height:20px;background:#2E5F8A;border:1px solid #999;"></span> &lt; 0.5 - Excelente</div>
+        <div><span style="display:inline-block;width:30px;height:20px;background:#4A7BA7;border:1px solid #999;"></span> 0.5-1.5 - Muy bien</div>
+        <div><span style="display:inline-block;width:30px;height:20px;background:#A3C1DA;border:1px solid #999;"></span> 1.5-2.5 - Bien</div>
+        <div><span style="display:inline-block;width:30px;height:20px;background:#D4E89E;border:1px solid #999;"></span> 2.5-3.5 - Aceptable</div>
+        <div><span style="display:inline-block;width:30px;height:20px;background:#9B9B9B;border:1px solid #999;"></span> 3.5-5 - Mejorable</div>
+        <div><span style="display:inline-block;width:30px;height:20px;background:#E57373;border:1px solid #999;"></span> &gt; 5 - Atención</div>
+      </div>
+    </div>
+    <div style="margin-top:0.75rem;"><strong>Celdas mensuales:</strong> Media de fallos/día en ese mes.</div>
+  </div>
+</div>
+<% } else { %>
+<div class="card"><p style="text-align:center;color:#666;padding:2rem;">No se practicaron piezas de repertorio este año.</p></div>
+<% } %>
+
+<div class="card no-print" style="text-align:center;margin-top:2rem;">
+  <p><strong>💡 Formato apaisado.</strong> Para PDF: Ctrl+P → Orientación: Apaisado → ✅ Gráficos de fondo</p>
+</div>
+
+<%- include('partials/footer') %>

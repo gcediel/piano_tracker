@@ -49,14 +49,14 @@ switch ($periodo) {
 
 // Obtener tiempo por actividad
 $stmt = $db->prepare("
-    SELECT 
-        a.tipo,
+    SELECT
+        CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END as tipo,
         SUM(a.tiempo_segundos) as tiempo_total,
         COUNT(DISTINCT a.id) as num_actividades
     FROM actividades a
     JOIN sesiones s ON a.sesion_id = s.id
     WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
-    GROUP BY a.tipo
+    GROUP BY CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END
     ORDER BY tiempo_total DESC
 ");
 $stmt->execute([
@@ -149,7 +149,8 @@ $stmt = $db->prepare("
         s.id as sesion_id,
         SUM(a.tiempo_segundos) as tiempo_total,
         SUM(CASE WHEN a.tipo = 'calentamiento' THEN a.tiempo_segundos ELSE 0 END) as tiempo_calentamiento,
-        SUM(CASE WHEN a.tipo = 'tecnica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_tecnica,
+        SUM(CASE WHEN a.tipo IN ('tecnica','tecnica_ejercicios') THEN a.tiempo_segundos ELSE 0 END) as tiempo_tecnica,
+        SUM(CASE WHEN a.tipo = 'practica_tecnica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_practica_tecnica,
         SUM(CASE WHEN a.tipo = 'practica' THEN a.tiempo_segundos ELSE 0 END) as tiempo_practica,
         SUM(CASE WHEN a.tipo = 'repertorio' THEN a.tiempo_segundos ELSE 0 END) as tiempo_repertorio,
         SUM(CASE WHEN a.tipo = 'improvisacion' THEN a.tiempo_segundos ELSE 0 END) as tiempo_improvisacion,
@@ -323,6 +324,7 @@ include 'includes/header.php';
                         <th>Total</th>
                         <th>Calentamiento</th>
                         <th>Técnica</th>
+                        <th>Práctica técnica</th>
                         <th>Práctica</th>
                         <th>Repertorio</th>
                         <th>Improvisación</th>
@@ -337,6 +339,7 @@ include 'includes/header.php';
                         <td><?php echo formatearTiempo($dia['tiempo_total']); ?></td>
                         <td><?php echo $dia['tiempo_calentamiento'] > 0 ? formatearTiempo($dia['tiempo_calentamiento']) : '-'; ?></td>
                         <td><?php echo $dia['tiempo_tecnica'] > 0 ? formatearTiempo($dia['tiempo_tecnica']) : '-'; ?></td>
+                        <td><?php echo $dia['tiempo_practica_tecnica'] > 0 ? formatearTiempo($dia['tiempo_practica_tecnica']) : '-'; ?></td>
                         <td><?php echo $dia['tiempo_practica'] > 0 ? formatearTiempo($dia['tiempo_practica']) : '-'; ?></td>
                         <td><?php echo $dia['tiempo_repertorio'] > 0 ? formatearTiempo($dia['tiempo_repertorio']) : '-'; ?></td>
                         <td><?php echo $dia['tiempo_improvisacion'] > 0 ? formatearTiempo($dia['tiempo_improvisacion']) : '-'; ?></td>

@@ -1,0 +1,24 @@
+{
+  "name": "piano-tracker-desktop",
+  "productName": "Piano Tracker",
+  "version": "1.0.0",
+  "description": "Piano Tracker como aplicación de escritorio (Electron), con control MIDI del Roland GO:KEYS 3",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "server": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.11.0"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}

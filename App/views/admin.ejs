@@ -1,0 +1,87 @@
+<%- include('partials/header') %>
+
+<% if (mensaje) { %><div class="alert alert-success"><%- mensaje %></div><% } %>
+<% if (error)   { %><div class="alert alert-danger"><%- error %></div><% } %>
+
+<div class="card">
+  <h2>⚙️ Configuración del metrónomo</h2>
+  <p>BPM que se asignará por defecto al metrónomo según el tipo de actividad.</p>
+  <form method="POST" action="/admin">
+    <input type="hidden" name="accion" value="guardar_bpm">
+    <div class="form-inline">
+      <div class="form-group">
+        <label>BPM por defecto — Técnica</label>
+        <input type="number" name="metro_bpm_tecnica" min="20" max="300" value="<%= bpmTecnica %>" style="width:100px;">
+      </div>
+      <div class="form-group">
+        <label>BPM por defecto — Práctica / Repertorio</label>
+        <input type="number" name="metro_bpm_practica" min="20" max="300" value="<%= bpmPractica %>" style="width:100px;">
+      </div>
+      <div class="form-group">
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </div>
+    <small style="color:var(--gray);">El Repertorio usa siempre el tempo de la pieza (o el BPM de Práctica si no tiene tempo asignado).</small>
+  </form>
+</div>
+
+<div class="card">
+  <h2>🎯 Resetear BPM de ejercicios de técnica</h2>
+  <p>Establece el mismo BPM para todos los ejercicios de técnica a la vez.</p>
+  <form method="POST" action="/admin" id="form-bpm-reset">
+    <input type="hidden" name="accion" value="resetear_bpm_tecnica">
+    <div class="form-inline">
+      <div class="form-group">
+        <label for="bpm_reset">BPM destino</label>
+        <input type="number" id="bpm_reset" name="bpm_reset" min="20" max="300" value="120" style="width:90px;">
+      </div>
+      <div class="form-group">
+        <button type="button" class="btn btn-warning"
+          onclick="confirmar('¿Resetear el BPM de TODOS los ejercicios de técnica a ' + document.getElementById('bpm_reset').value + ' BPM?', function(){ document.getElementById('form-bpm-reset').submit(); })">
+          Resetear todos a este BPM
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>📋 Gestión de sesiones</h2>
+  <p style="color:var(--gray);">Añadir, editar o eliminar sesiones registradas manualmente.</p>
+  <a href="/gestionar-sesiones" class="btn btn-primary">Gestionar sesiones</a>
+</div>
+
+<div class="card">
+  <h2>📤 Exportar datos</h2>
+  <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+    <a href="/admin/export-csv" class="btn btn-primary">Exportar CSV (Excel)</a>
+    <a href="/admin/export-sql" class="btn btn-primary">Exportar SQL (copia de seguridad)</a>
+  </div>
+  <small style="color:var(--gray);display:block;margin-top:0.5rem;">
+    CSV: todas las sesiones y actividades con fallos, para abrir en Excel/Sheets.<br>
+    SQL: backup completo de la base de datos compartida, restaurable en cualquier momento.
+  </small>
+</div>
+
+<div class="card">
+  <h2>📥 Importar base de datos</h2>
+  <p style="color:var(--danger);font-weight:bold;">⚠️ Esta acción reemplazará TODOS los datos actuales (compartidos con la web). Haz un backup primero.</p>
+  <form method="POST" action="/admin/import-sql" enctype="multipart/form-data" data-confirm="¿SEGURO que quieres importar este backup? Se perderán todos los datos actuales.">
+    <div class="form-group">
+      <label for="sql_file">Selecciona archivo SQL de backup</label>
+      <input type="file" id="sql_file" name="sql_file" accept=".sql" required>
+    </div>
+    <button type="submit" class="btn btn-warning">Importar y ejecutar SQL</button>
+  </form>
+</div>
+
+<div class="card" style="border-left:4px solid var(--danger);">
+  <h2 style="color:var(--danger);">⛔ Zona peligrosa</h2>
+  <p>Elimina todas las sesiones, actividades y registros de fallos (afecta también a la web, comparten la misma base de datos). El repertorio, los ejercicios de técnica y la configuración se conservan.</p>
+  <form method="POST" action="/admin" data-confirm="⚠️ ¿BORRAR TODOS LOS DATOS DE PRÁCTICA? Esta acción es PERMANENTE e irreversible, y afecta también a la web.">
+    <input type="hidden" name="accion" value="eliminar_todo">
+    <button type="submit" class="btn btn-danger" style="font-size:1.05rem;padding:0.7rem 1.4rem;">☠️ Borrar todos los datos de práctica</button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

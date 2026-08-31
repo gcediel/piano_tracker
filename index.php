@@ -5,6 +5,20 @@ $pageTitle = 'Inicio - Piano Tracker';
 // Obtener estadísticas rápidas
 $db = getDB();
 
+// Evaluar progresión de tempo / graduación a mantenimiento del mes natural anterior
+// (ver auditoria_pedagogica.md). Idempotente: solo actúa sobre piezas que aún no
+// tengan ese mes marcado como evaluado.
+evaluarProgresionMensual($db);
+
+// Sugerencias pendientes de confirmar por el usuario
+$stmt = $db->query("
+    SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, sugerencia_graduacion_pendiente
+    FROM piezas
+    WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR sugerencia_graduacion_pendiente = 1)
+    ORDER BY compositor, titulo
+");
+$sugerenciasPendientes = $stmt->fetchAll();
+
 // Auto-corrección: marcar como finalizadas las sesiones que tienen todas sus actividades completadas
 $db->exec("
     UPDATE sesiones s 
@@ -176,6 +190,34 @@ $ultimasSesiones = $stmt->fetchAll();
 include 'includes/header.php';
 ?>
 
+<?php if (!empty($sugerenciasPendientes)): ?>
+<div class="card" id="cardSugerencias">
+    <h2>💡 Sugerencias de progresión</h2>
+    <?php foreach ($sugerenciasPendientes as $s): ?>
+        <?php if ($s['sugerencia_tempo_pendiente'] !== null): ?>
+        <div class="alert alert-info" id="sugerencia-tempo-<?php echo $s['id']; ?>" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+            <span>🎹 <strong><?php echo htmlspecialchars($s['compositor'] . ' - ' . $s['titulo']); ?></strong>:
+                media de fallos con metrónomo ≤1 el mes pasado. Subir tempo de <?php echo $s['tempo']; ?> a <strong><?php echo $s['sugerencia_tempo_pendiente']; ?> BPM</strong>.</span>
+            <span>
+                <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_tempo', <?php echo $s['id']; ?>, 'sugerencia-tempo-<?php echo $s['id']; ?>')">✓ Subir tempo</button>
+                <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_tempo', <?php echo $s['id']; ?>, 'sugerencia-tempo-<?php echo $s['id']; ?>')">Descartar</button>
+            </span>
+        </div>
+        <?php endif; ?>
+        <?php if ($s['sugerencia_graduacion_pendiente']): ?>
+        <div class="alert alert-info" id="sugerencia-grad-<?php echo $s['id']; ?>" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+            <span>🎹 <strong><?php echo htmlspecialchars($s['compositor'] . ' - ' . $s['titulo']); ?></strong>:
+                lleva varios meses en su tempo objetivo (<?php echo $s['tempo_objetivo']; ?> BPM) con pocos fallos. ¿Pasarla a repertorio de mantenimiento?</span>
+            <span>
+                <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_graduacion', <?php echo $s['id']; ?>, 'sugerencia-grad-<?php echo $s['id']; ?>')">✓ Pasar a mantenimiento</button>
+                <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_graduacion', <?php echo $s['id']; ?>, 'sugerencia-grad-<?php echo $s['id']; ?>')">Descartar</button>
+            </span>
+        </div>
+        <?php endif; ?>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <h2>Acciones rápidas</h2>
     <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
@@ -308,5 +350,27 @@ include 'includes/header.php';
         </table>
     <?php endif; ?>
 </div>
+
+<?php if (!empty($sugerenciasPendientes)): ?>
+<script>
+function responderSugerencia(accion, piezaId, elementoId) {
+    fetch('ajax/sugerencias.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: accion, pieza_id: piezaId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const el = document.getElementById(elementoId);
+            if (el) el.remove();
+        } else {
+            alert('Error: ' + (data.error || 'desconocido'));
+        }
+    })
+    .catch(() => alert('Error de conexión al aplicar la sugerencia.'));
+}
+</script>
+<?php endif; ?>
 
 <?php include 'includes/footer.php'; ?>

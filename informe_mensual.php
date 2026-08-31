@@ -73,15 +73,15 @@ $todosDias = range(1, $diasDelMes);
 
 // Obtener tiempo por día y tipo de actividad
 $stmt = $db->prepare("
-    SELECT 
+    SELECT
         DAY(s.fecha) as dia,
-        a.tipo,
+        CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END as tipo,
         SUM(a.tiempo_segundos) as tiempo_total
     FROM sesiones s
     LEFT JOIN actividades a ON s.id = a.sesion_id
     WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
     AND s.estado = 'finalizada'
-    GROUP BY DAY(s.fecha), a.tipo
+    GROUP BY DAY(s.fecha), CASE WHEN a.tipo IN ('tecnica', 'tecnica_ejercicios', 'practica_tecnica') THEN 'tecnica' ELSE a.tipo END
 ");
 $stmt->execute([
     ':fecha_inicio' => $fechaInicio,
@@ -171,9 +171,13 @@ foreach ($todosDias as $dia) {
     }
 }
 
-// Obtener piezas practicadas con fallos por día
+// Obtener piezas practicadas con fallos por día.
+// Solo se cuentan los fallos "con metrónomo": es la pasada que refleja la
+// interpretación real y la que alimenta el criterio automático de progresión
+// de tempo (ver auditoria_pedagogica.md), así que la media que se lee aquí
+// coincide con la que usa la app para sugerir subir tempo o pasar a mantenimiento.
 $stmt = $db->prepare("
-    SELECT 
+    SELECT
         p.id,
         p.compositor,
         p.titulo,
@@ -181,6 +185,8 @@ $stmt = $db->prepare("
         p.grado,
         p.instrumento,
         p.tempo,
+        p.tempo_objetivo,
+        p.estado,
         p.ponderacion,
         DAY(s.fecha) as dia,
         f.cantidad as fallos
@@ -190,6 +196,7 @@ $stmt = $db->prepare("
     JOIN sesiones s ON a.sesion_id = s.id
     WHERE s.fecha BETWEEN :fecha_inicio AND :fecha_fin
     AND a.tipo = 'repertorio'
+    AND f.tipo_pasada = 'metronomo'
     ORDER BY p.libro, p.grado, p.compositor, p.titulo
 ");
 $stmt->execute([
@@ -214,6 +221,8 @@ foreach ($datosPiezas as $dato) {
             'grado' => $dato['grado'],
             'instrumento' => $dato['instrumento'],
             'tempo' => $dato['tempo'],
+            'tempo_objetivo' => $dato['tempo_objetivo'],
+            'estado' => $dato['estado'],
             'ponderacion' => $dato['ponderacion'],
             'fallos_por_dia' => $fallos_por_dia
         ];
@@ -664,6 +673,8 @@ include 'includes/header.php';
                     <th class="col-fija-header">Compositor</th>
                     <th class="col-fija-header">Nombre</th>
                     <th class="col-fija-header">Tempo</th>
+                    <th class="col-fija-header">Objetivo</th>
+                    <th class="col-fija-header">Categoría</th>
                     <th class="col-fija-header">Instr</th>
                     <th class="col-fija-header">Pond</th>
                     <?php foreach ($todosDias as $dia): ?>
@@ -690,6 +701,12 @@ include 'includes/header.php';
                     </td>
                     <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo $pieza['tempo'] ? '♩=' . $pieza['tempo'] : '-'; ?>
+                    </td>
+                    <td class="col-fija" style="text-align: center; font-size: 0.75rem; white-space: normal; color: black;">
+                        <?php echo $pieza['tempo_objetivo'] ? '♩=' . $pieza['tempo_objetivo'] : '-'; ?>
+                    </td>
+                    <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
+                        <?php echo $pieza['estado'] === 'mantenimiento' ? '🛠 Mant.' : '📈 Aprend.'; ?>
                     </td>
                     <td class="col-fija" style="font-size: 0.75rem; white-space: normal; color: black;">
                         <?php echo htmlspecialchars($pieza['instrumento'] ?? 'Piano'); ?>
@@ -824,8 +841,11 @@ include 'includes/header.php';
     </script>
     
     <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem;">
+        <p style="margin-top: 0; color: #666;">
+            <em><strong>Nota:</strong> los fallos y medias de esta tabla solo cuentan la pasada <strong>con metrónomo</strong> (la interpretación real); el pase libre previo no se incluye. Es el mismo criterio que usa la app para sugerir subidas de tempo y el paso a mantenimiento.</em>
+        </p>
         <strong>📊 Leyenda de colores - Paleta adaptada para daltonismo:</strong>
-        
+
         <div style="margin-top: 0.75rem;">
             <strong>Filas según media de fallos:</strong>
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-top: 0.5rem;">

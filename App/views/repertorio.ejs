@@ -1,0 +1,185 @@
+<%- include('partials/header') %>
+
+<% if (mensaje) { %><div class="alert alert-success"><%- mensaje %></div><% } %>
+<% if (error)   { %><div class="alert alert-danger"><%- error %></div><% } %>
+
+<div class="card">
+  <h2><%= editando ? 'Editar pieza' : 'Nueva pieza' %></h2>
+  <form method="POST" action="/repertorio">
+    <input type="hidden" name="accion" value="<%= editando ? 'editar' : 'crear' %>">
+    <% if (editando) { %><input type="hidden" name="id" value="<%= editando.id %>"><% } %>
+    <div class="form-inline">
+      <div class="form-group" style="min-width:180px;">
+        <label>Compositor *</label>
+        <input type="text" name="compositor" required value="<%= editando ? editando.compositor : '' %>">
+      </div>
+      <div class="form-group" style="min-width:220px;">
+        <label>Título *</label>
+        <input type="text" name="titulo" required value="<%= editando ? editando.titulo : '' %>">
+      </div>
+      <div class="form-group">
+        <label>Libro / Colección</label>
+        <input type="text" name="libro" value="<%= editando ? (editando.libro||'') : '' %>" placeholder="Ej: Clave Bien Temperado I">
+      </div>
+      <div class="form-group">
+        <label>Grado (1-10)</label>
+        <input type="number" name="grado" min="1" max="10" value="<%= editando ? (editando.grado||'') : '' %>" style="width:80px;">
+      </div>
+      <div class="form-group">
+        <label>Tempo (BPM)</label>
+        <input type="number" name="tempo" min="20" max="300" value="<%= editando ? (editando.tempo||'') : '' %>" style="width:90px;">
+      </div>
+      <div class="form-group">
+        <label title="Al alcanzarlo y mantenerlo, la app sugerirá pasar la pieza a mantenimiento">Tempo objetivo</label>
+        <input type="number" name="tempo_objetivo" min="20" max="300" value="<%= editando ? (editando.tempo_objetivo||'') : '' %>" style="width:90px;">
+      </div>
+      <div class="form-group">
+        <label>Ponderación (1=muy frecuente)</label>
+        <input type="number" name="ponderacion" min="0.1" max="10" step="0.25" value="<%= editando ? editando.ponderacion : 1.00 %>" style="width:90px;">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Tono en el Roland GO:KEYS (1228 tonos disponibles)</label>
+      <%- include('partials/tone_picker', {
+        idPrefix: 'tonePicker', fieldPrefix: 'tono',
+        initial: editando ? { msb: editando.tono_msb, lsb: editando.tono_lsb, pc: editando.tono_pc, nombre: editando.tono_nombre } : {}
+      }) %>
+      <small style="color:var(--gray);">Si no seleccionas ningún tono del Roland, se usará el instrumento General MIDI por defecto (Acoustic Grand Piano).</small>
+    </div>
+
+    <div class="mt-1" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+      <% if (editando) { %>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        <a href="/repertorio" class="btn btn-warning">Cancelar</a>
+      <% } else { %>
+        <button type="submit" class="btn btn-primary">Añadir pieza</button>
+      <% } %>
+    </div>
+  </form>
+</div>
+
+<% if (piezasInactivas && piezasInactivas.length) { %>
+<div style="margin:0.5rem 0;">
+  <label style="cursor:pointer;">
+    <input type="checkbox" id="chkIncluirInactivas" checked onchange="toggleInactivas()"> Incluir piezas desactivadas (<%= piezasInactivas.length %>)
+  </label>
+</div>
+<% } %>
+
+<div class="card">
+  <h2>Repertorio activo (<%= piezasActivas.length %>)</h2>
+  <% if (!piezasActivas.length) { %>
+    <p>No hay piezas en el repertorio activo.</p>
+  <% } else { %>
+  <div style="overflow-x:auto;">
+  <table id="tablaActivas" class="display" style="width:100%">
+    <thead><tr><th>Compositor</th><th>Título</th><th>Libro</th><th>Grado</th><th>Tempo</th><th>Objetivo</th><th>Categoría</th><th>Tono Roland</th><th>Pond.</th><th>Fallos 30d</th><th>Últ. práctica</th><th>Acciones</th></tr></thead>
+    <tbody>
+    <% piezasActivas.forEach(p => { %>
+      <tr>
+        <td><%= p.compositor %></td>
+        <td><%= p.titulo %></td>
+        <td><%= p.libro || '-' %></td>
+        <td style="text-align:center;"><%= p.grado || '-' %></td>
+        <td style="text-align:center;"><%= p.tempo || '-' %></td>
+        <td style="text-align:center;"><%= p.tempo_objetivo || '-' %></td>
+        <td><%= p.estado === 'mantenimiento' ? '🛠 Mantenimiento' : '📈 Aprendizaje' %></td>
+        <td>
+          <% if (p.tono_nombre) { %>
+            <%= p.tono_nombre %> <span style="color:var(--gray);font-size:0.78rem;">(<%= p.tono_msb %>/<%= p.tono_lsb %>/<%= p.tono_pc %>)</span>
+          <% } else { %>
+            <span style="color:var(--gray);">GM: <%= h.GM_INSTRUMENTS[p.programa_midi || 0] %></span>
+          <% } %>
+        </td>
+        <td style="text-align:center;"><%= p.ponderacion %></td>
+        <td style="text-align:center;background:<%= h.getColorFallos(p.media_fallos) %>22;color:<%= h.getColorFallos(p.media_fallos) %>;font-weight:bold;">
+          <%= p.media_fallos !== null && p.media_fallos !== undefined ? Number(p.media_fallos).toFixed(1) : '-' %>
+        </td>
+        <td><%= p.ultima_practica ? h.formatDate(p.ultima_practica) : 'Nunca' %></td>
+        <td style="white-space:nowrap;">
+          <a href="/repertorio?editar=<%= p.id %>" class="btn btn-primary btn-small">Editar</a>
+          <form method="POST" action="/repertorio" style="display:inline;" data-confirm="<%= p.estado === 'mantenimiento' ? '¿Volver esta pieza a aprendizaje?' : '¿Marcar esta pieza como mantenimiento?' %>">
+            <input type="hidden" name="id" value="<%= p.id %>">
+            <input type="hidden" name="accion" value="<%= p.estado === 'mantenimiento' ? 'marcar_aprendizaje' : 'marcar_mantenimiento' %>">
+            <button type="submit" class="btn btn-small" style="background:var(--secondary);color:white;"><%= p.estado === 'mantenimiento' ? '📈 A aprendizaje' : '🛠 A mantenimiento' %></button>
+          </form>
+          <form method="POST" action="/repertorio" style="display:inline;" data-confirm="¿Desactivar esta pieza?">
+            <input type="hidden" name="id" value="<%= p.id %>">
+            <input type="hidden" name="accion" value="desactivar">
+            <button type="submit" class="btn btn-warning btn-small">Desactivar</button>
+          </form>
+          <form method="POST" action="/repertorio" style="display:inline;" data-confirm="¿Eliminar permanentemente esta pieza y sus registros de fallos?">
+            <input type="hidden" name="id" value="<%= p.id %>">
+            <input type="hidden" name="accion" value="eliminar">
+            <button type="submit" class="btn btn-danger btn-small">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>
+
+<% if (piezasInactivas && piezasInactivas.length) { %>
+<div class="card" id="cardInactivas">
+  <h2>Repertorio inactivo (<%= piezasInactivas.length %>)</h2>
+  <table id="tablaInactivas" class="display" style="width:100%">
+    <thead><tr><th>Compositor</th><th>Título</th><th>Tono</th><th>Acciones</th></tr></thead>
+    <tbody>
+    <% piezasInactivas.forEach(p => { %>
+      <tr>
+        <td><%= p.compositor %></td>
+        <td><%= p.titulo %></td>
+        <td><%= p.tono_nombre || h.GM_INSTRUMENTS[p.programa_midi || 0] %></td>
+        <td style="white-space:nowrap;">
+          <form method="POST" action="/repertorio" style="display:inline;">
+            <input type="hidden" name="id" value="<%= p.id %>">
+            <input type="hidden" name="accion" value="activar">
+            <button type="submit" class="btn btn-success btn-small">Activar</button>
+          </form>
+          <form method="POST" action="/repertorio" style="display:inline;" data-confirm="¿Eliminar permanentemente?">
+            <input type="hidden" name="id" value="<%= p.id %>">
+            <input type="hidden" name="accion" value="eliminar">
+            <button type="submit" class="btn btn-danger btn-small">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+function toggleInactivas() {
+  const card = document.getElementById('cardInactivas');
+  if (card) card.style.display = document.getElementById('chkIncluirInactivas').checked ? '' : 'none';
+}
+
+$(document).ready(function() {
+  const lang = { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' };
+  if ($('#tablaActivas tbody tr').length > 1) {
+    $('#tablaActivas').DataTable({
+      language: lang,
+      order: [[9, 'desc']],
+      pageLength: 25,
+      columnDefs: [ { orderable: false, targets: -1 } ]
+    });
+  }
+  if ($('#tablaInactivas tbody tr').length > 1) {
+    $('#tablaInactivas').DataTable({
+      language: lang,
+      pageLength: 25,
+      columnDefs: [ { orderable: false, targets: -1 } ]
+    });
+  }
+});
+</script>
+
+<%- include('partials/footer') %>

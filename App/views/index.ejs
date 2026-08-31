@@ -1,0 +1,114 @@
+<%- include('partials/header') %>
+
+<% if (sugerenciasPendientes && sugerenciasPendientes.length) { %>
+<div class="card" id="cardSugerencias">
+  <h2>💡 Sugerencias de progresión</h2>
+  <% sugerenciasPendientes.forEach(s => { %>
+    <% if (s.sugerencia_tempo_pendiente !== null) { %>
+    <div class="alert alert-info" id="sugerencia-tempo-<%= s.id %>" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+      <span>🎹 <strong><%= s.compositor %> — <%= s.titulo %></strong>: media de fallos con metrónomo ≤1 el mes pasado. Subir tempo de <%= s.tempo %> a <strong><%= s.sugerencia_tempo_pendiente %> BPM</strong>.</span>
+      <span>
+        <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_tempo', <%= s.id %>, 'sugerencia-tempo-<%= s.id %>')">✓ Subir tempo</button>
+        <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_tempo', <%= s.id %>, 'sugerencia-tempo-<%= s.id %>')">Descartar</button>
+      </span>
+    </div>
+    <% } %>
+    <% if (s.sugerencia_graduacion_pendiente) { %>
+    <div class="alert alert-info" id="sugerencia-grad-<%= s.id %>" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+      <span>🎹 <strong><%= s.compositor %> — <%= s.titulo %></strong>: lleva varios meses en su tempo objetivo (<%= s.tempo_objetivo %> BPM) con pocos fallos. ¿Pasarla a repertorio de mantenimiento?</span>
+      <span>
+        <button class="btn btn-success btn-small" onclick="responderSugerencia('aplicar_graduacion', <%= s.id %>, 'sugerencia-grad-<%= s.id %>')">✓ Pasar a mantenimiento</button>
+        <button class="btn btn-warning btn-small" onclick="responderSugerencia('descartar_graduacion', <%= s.id %>, 'sugerencia-grad-<%= s.id %>')">Descartar</button>
+      </span>
+    </div>
+    <% } %>
+  <% }) %>
+</div>
+<script>
+function responderSugerencia(accion, piezaId, elementoId) {
+  fetch('/ajax/sugerencias', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accion, pieza_id: piezaId })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const el = document.getElementById(elementoId);
+      if (el) el.remove();
+    } else {
+      alert('Error: ' + (data.error || 'desconocido'));
+    }
+  })
+  .catch(() => alert('Error de conexión al aplicar la sugerencia.'));
+}
+</script>
+<% } %>
+
+<div class="card">
+  <h2>🚀 Acciones rápidas</h2>
+  <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+    <% if (sesionEnCurso) { %>
+      <a href="/sesion?sesion=<%= sesionEnCurso.id %>" class="btn btn-warning">▶ Continuar sesión en curso</a>
+    <% } else { %>
+      <a href="/sesion" class="btn btn-success">▶ Nueva sesión</a>
+    <% } %>
+    <a href="/repertorio" class="btn btn-primary">🎹 Repertorio</a>
+    <a href="/tecnica" class="btn btn-primary">🎯 Técnica</a>
+    <a href="/informes" class="btn btn-primary">📊 Informes</a>
+    <a href="/roland" class="btn btn-info">🎛️ Roland GO:KEYS</a>
+  </div>
+</div>
+
+<% if (sesionEnCurso) { %>
+<div class="alert alert-info">
+  ℹ️ Tienes una sesión en curso desde el <%= h.formatDate(sesionEnCurso.fecha) %>.
+  <a href="/sesion?sesion=<%= sesionEnCurso.id %>">Continuar ahora</a>
+</div>
+<% } %>
+
+<div class="card">
+  <h2>Tiempo practicado</h2>
+  <div class="stats-grid">
+    <div class="stat-box"><h3><%= h.formatearTiempoBreve(tiempoHoy) %></h3><p>Hoy</p></div>
+    <div class="stat-box"><h3><%= h.formatearTiempoBreve(tiempoSemana) %></h3><p>Esta semana</p></div>
+    <div class="stat-box"><h3><%= h.formatearTiempoBreve(tiempoMes) %></h3><p>Este mes</p></div>
+    <div class="stat-box"><h3><%= h.formatearTiempoBreve(tiempoAnio) %></h3><p>Este año</p></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Constancia</h2>
+  <div class="stats-grid">
+    <div class="stat-box"><h3><%= pctSemana %>%</h3><p>Días practicados esta semana</p></div>
+    <div class="stat-box"><h3><%= pctMes %>%</h3><p>Días practicados este mes</p></div>
+    <div class="stat-box"><h3><%= diasAnio %></h3><p>Días practicados este año</p></div>
+    <div class="stat-box"><h3>🔥 <%= rachas.actual %></h3><p>Racha actual (días)</p></div>
+    <div class="stat-box"><h3>🏆 <%= rachas.maxima %></h3><p>Racha más larga</p></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Últimas sesiones</h2>
+  <% if (!ultimasSesiones.length) { %>
+    <p style="color:var(--gray);">Aún no hay sesiones finalizadas.</p>
+  <% } else { %>
+  <table>
+    <thead><tr><th>Fecha</th><th>Tiempo total</th><th>Media fallos (repertorio)</th><th></th></tr></thead>
+    <tbody>
+    <% ultimasSesiones.forEach(s => { %>
+      <tr>
+        <td><%= h.formatDate(s.fecha) %></td>
+        <td><%= h.formatearTiempo(s.tiempo_total) %></td>
+        <td style="color:<%= h.getColorFallos(s.media_fallos) %>;font-weight:bold;">
+          <%= s.media_fallos != null ? Number(s.media_fallos).toFixed(2) : '-' %>
+        </td>
+        <td><a href="/sesion?ver=<%= s.id %>" class="btn btn-small btn-primary">Ver</a></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

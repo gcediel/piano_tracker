@@ -7,6 +7,7 @@
 ✅ **Timer dinámico con AJAX**: Cronómetro que guarda progreso automáticamente cada 5 segundos
 ✅ **Metrónomo integrado**: Con BPM ajustable, pulsos por compás, acento en primer pulso, control de volumen y persistencia de preferencias
 ✅ **Soporte MIDI**: Envío automático de Program Change al piano vía Web MIDI API al cambiar de pieza en Repertorio
+✅ **Piano MIDI**: Página dedicada para seleccionar instrumento (128 voces GM en 16 categorías) y ajustar volumen, reverb, chorus y paneo directamente desde la tablet, sin tocar el panel del piano
 ✅ **Algoritmo de selección inteligente**: Sugiere automáticamente qué pieza del repertorio practicar basándose en fallos ponderados de los últimos 30 días
 ✅ **Registro de fallos**: Contabiliza errores por pieza durante la práctica
 ✅ **Informes detallados**: Estadísticas por día, semana, mes y año con tablas de tiempo y fallos
@@ -135,7 +136,15 @@ Abrir el navegador en `https://tu-servidor/` o `http://localhost/piano`
 
 > **Compatibilidad MIDI:** Chrome, Brave, Vivaldi y otros navegadores Chromium. No compatible con Firefox ni DuckDuckGo.
 
-### 6. Ver informes
+### 6. Usar la página Piano MIDI
+- Ve a **Piano MIDI** en el menú de navegación
+- Selecciona el dispositivo MIDI en el desplegable de conexión
+- **Instrumento:** elige la categoría (Piano, Órgano, Guitarra…) y pulsa cualquier voz para enviar el Program Change al piano al instante
+- **Metrónomo:** disponible en esta misma página para usarla de forma independiente a la sesión
+- **Controles:** ajusta Volumen (CC7), Reverb (CC91), Chorus (CC93) y Paneo (CC10) con los sliders; los valores se recuerdan entre visitas
+- Si el acceso MIDI aparece bloqueado, pulsa el icono de candado en Chrome → MIDI → Permitir → Reintentar conexión
+
+### 7. Ver informes
 - Ve a **Informes** → selecciona el periodo
 - Estadísticas de tiempo por actividad y fallos por pieza con gráficos
 
@@ -172,6 +181,7 @@ piano_tracker/
 ├── index.php                 # Dashboard principal
 ├── repertorio.php            # Gestión de piezas (con tono MIDI GM)
 ├── sesion.php                # Sesiones de práctica (timer + metrónomo + MIDI)
+├── midi.php                  # Control MIDI del piano (instrumento, efectos, metrónomo)
 ├── informes.php              # Estadísticas e informes
 ├── admin.php                 # Panel de administración
 ├── gestionar_sesiones.php    # CRUD de sesiones manuales
@@ -197,12 +207,16 @@ sudo systemctl restart mysql
 - En Android: asegurarse de seleccionar modo **MIDI** al conectar el cable USB
 - Refrescar la página tras conectar el cable si el dispositivo no aparece
 
+### El navegador muestra "acceso MIDI bloqueado"
+- En Chrome: pulsar el icono de candado (o ⓘ) junto a la URL → buscar "MIDI" → cambiar a "Permitir"
+- Después pulsar el botón **"Reintentar conexión"** que aparece en la página (no hace falta recargar)
+
 ### El metrónomo no suena
 - El audio requiere interacción previa del usuario (limitación del navegador)
 - Pulsar cualquier botón antes de iniciar el metrónomo
 
 ---
 
-**Versión**: 1.6  
+**Versión**: 1.8  
 **Última actualización**: Junio 2026  
 **Licencia**: Uso personal
