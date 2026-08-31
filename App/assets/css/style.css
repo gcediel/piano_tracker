@@ -241,7 +241,7 @@ tbody tr:hover { background: #f8fbff; }
   text-align: center;
   color: var(--white);
 }
-.timer-display h2 { font-size: 3rem; margin: 0.5rem 0; font-family: 'Courier New', monospace; }
+.timer-display h2 { font-size: 3rem; margin: 0.5rem 0; font-family: 'Courier New', monospace; color: var(--white); }
 .actividad-actual { font-size: 1.1rem; }
 
 .timer-controls {
