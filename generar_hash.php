@@ -1,11 +1,14 @@
 <?php
-// Script para generar hash correcto de la contraseña por defecto
+// Script para generar el hash de una contraseña. Uso: php generar_hash.php <contraseña>
 
-$password = 'piano2026';
+$password = $argv[1] ?? null;
+if (!$password) {
+    fwrite(STDERR, "Uso: php generar_hash.php <contraseña>\n");
+    exit(1);
+}
 $hash = password_hash($password, PASSWORD_DEFAULT);
 
 echo "=== GENERADOR DE HASH DE CONTRASEÑA ===\n\n";
-echo "Contraseña: piano2026\n";
 echo "Hash generado: $hash\n\n";
 
 // Verificar que funciona
