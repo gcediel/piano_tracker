@@ -1,5 +1,6 @@
 const express = require('express');
 const path    = require('path');
+const fs      = require('fs');
 const config  = require('./config');
 
 const app = express();
@@ -12,6 +13,14 @@ app.set('views', path.join(__dirname, '..', 'views'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
+
+// Cache-busting de style.css: evita que el navegador/Electron sirva una hoja
+// de estilos antigua tras un fix visual (mtime calculado una vez al arrancar).
+let cssVersion = '1';
+try {
+  cssVersion = String(fs.statSync(path.join(__dirname, '..', 'assets', 'css', 'style.css')).mtimeMs | 0);
+} catch (e) { /* si falla, se sirve sin versión */ }
+app.use((req, res, next) => { res.locals.cssVersion = cssVersion; next(); });
 
 // ─── Rutas ────────────────────────────────────────────────────────────────────
 app.use('/',                   require('./routes/dashboard'));
