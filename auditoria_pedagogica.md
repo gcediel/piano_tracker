@@ -220,3 +220,24 @@ Pero el único estudio con tareas tipo piano encontró lo contrario: **Wiseheart
 8. **Techo/pausa de mantenimiento para ejercicios de técnica muy sobreaprendidos.** Marcar ejercicios que llevan mucho tiempo muy por encima de 120 BPM con menor frecuencia de rotación.
 
 9. **No construir un scheduler de repetición espaciada tipo SM-2.** El único estudio directo en piano no encontró efecto de espaciado a intervalos cortos; el diseño actual (decaimiento por recencia + práctica voluntaria) no debería tocarse en esa dirección sin evidencia específica que lo justifique.
+
+---
+
+## Actualización — estado de las recomendaciones (2026-09-02)
+
+En la semana posterior a esta auditoría (commits del 31 de agosto de 2026) se implementaron varios de los puntos de "Alto impacto" de la lista priorizada. Este apartado no reescribe el análisis de las Fases 1-3 anteriores (siguen describiendo con precisión el estado *previo* a estos cambios); solo deja constancia de qué recomendaciones ya están en el código y cuáles siguen pendientes.
+
+**Implementado:**
+
+1. **Automatizar el criterio de progresión de tempo** (punto 1) — ✅ hecho. `evaluarProgresionMensual()` en `includes/funciones.php` (puerto en `App/server/helpers.js`) calcula la media mensual de fallos con metrónomo y marca `sugerencia_tempo_pendiente`, mostrada como aviso a confirmar en el dashboard. El umbral final usado es media ≤ 1 (igual que el propuesto).
+3. **Distinguir fallos "con metrónomo" de fallos de pase libre** (punto 3) — ✅ hecho. Columna `fallos.tipo_pasada` (`migracion_mantenimiento.sql`); tanto `obtenerPiezaSugerida()` como `evaluarProgresionMensual()` usan únicamente `tipo_pasada = 'metronomo'`.
+5. **Corregir el acantilado de score a los 30 días** (punto 5) — ✅ hecho, y de forma más completa de lo propuesto: `obtenerPiezaSugerida()` usa decaimiento exponencial (semivida 15 días, ventana de 180 días) en vez del corte binario original, y separa explícitamente "nunca evaluada con metrónomo" (score `-1`) de "dominada y sin fallos recientes" (score que decae hacia 0 sin llegar a él).
+6. **Ofrecer sugerencia de graduación de piezas** (punto 6) — ✅ hecho, con una vuelta de tuerca adicional respecto a la propuesta original: en vez de quedar como sugerencia a confirmar, la graduación a `estado = 'mantenimiento'` se **aplica sola** al alcanzar el umbral (3 meses consecutivos con media de fallos con metrónomo ≤ 0.25 y ≥ 8 días practicados — más exigente que el ≤1 usado para subir tempo); el dashboard solo muestra un aviso informativo (`aviso_graduacion_pendiente`) descartable con "Entendido". También se añadió démoción automática de vuelta a "aprendizaje" si los dos últimos registros de fallos de una pieza en mantenimiento son ambos > 0 (`revisarDemocionMantenimiento()`), algo no contemplado explícitamente en la lista original pero coherente con el punto 1 de la Fase 3 (criterios de consolidación).
+
+**Sigue pendiente (sin cambios desde la Fase 1-3):**
+
+2. **Reponderar el orden de ejercicios de técnica para enfocar debilidades** (punto 2, medio impacto según prioridad pero cambio de código pequeño) — ❌ no implementado. `sesion.php` sigue ordenando `ejercicios_tecnica` por `veces_total ASC, bpm ASC, nombre ASC`; un ejercicio recién valorado "mal" no sube de prioridad.
+4. **Permitir granularidad de sección/pasaje en repertorio** (punto 4) — ❌ no implementado. No existe tabla `pasajes` ni `fallos.pasaje_id`.
+7. **Eliminar o vincular el campo `grado`** (punto 7) — ❌ no implementado. Sigue capturándose en `repertorio.php` sin usarse en ningún cálculo.
+8. **Techo/pausa de mantenimiento para ejercicios de técnica muy sobreaprendidos** (punto 8) — ❌ no implementado. El BPM de los ejercicios de técnica sigue sin techo ni reducción de frecuencia.
+9. **No construir un scheduler de repetición espaciada tipo SM-2** — recomendación de *no hacer*; sigue sin construirse, consistente con la recomendación.
