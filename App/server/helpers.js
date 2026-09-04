@@ -355,11 +355,12 @@ async function registrarFallo(pool, actividadId, piezaId, cantidad, tipoPasada) 
 function getColorFallos(media) {
   const m = parseFloat(media);
   if (media === null || media === undefined || isNaN(m)) return '#999999';
-  if (m < 0.5) return '#27ae60';
-  if (m < 1.5) return '#2ecc71';
-  if (m < 3.0) return '#f39c12';
-  if (m < 5.0) return '#e67e22';
-  return '#e74c3c';
+  if (m < 0.5) return '#2E5F8A';
+  if (m < 1.5) return '#4A7BA7';
+  if (m < 2.5) return '#A3C1DA';
+  if (m < 3.5) return '#D4E89E';
+  if (m <= 5) return '#9B9B9B';
+  return '#E57373';
 }
 
 // ─── Meses en castellano ──────────────────────────────────────────────────────
