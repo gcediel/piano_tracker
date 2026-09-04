@@ -530,6 +530,18 @@ tbody tr:hover { background: #f8fbff; }
 .roland-preset-load:disabled .roland-preset-name { color: var(--gray); font-style: italic; }
 .roland-preset-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
 
+.roland-panel summary {
+  cursor: pointer;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.85rem;
+  font-weight: 600;
+  list-style: none;
+}
+.roland-panel summary::-webkit-details-marker { display: none; }
+.roland-panel summary::before { content: '▶'; display: inline-block; margin-right: 0.4rem; font-size: 0.7rem; transition: transform 0.15s; }
+.roland-panel[open] summary::before { transform: rotate(90deg); }
+.roland-panel .roland-panel-body { margin-top: 0.6rem; }
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {

@@ -118,41 +118,44 @@
       </div>
     </div>
 
-    <div style="margin-top:0.6rem;background:rgba(255,255,255,0.1);border-radius:8px;padding:0.6rem 0.7rem;text-align:left;">
-      <div style="text-align:center;color:rgba(255,255,255,0.85);font-size:0.85rem;margin-bottom:0.3rem;">🎛️ Tono en el Roland</div>
-      <%- include('partials/tone_picker', {
-        idPrefix: 'sesionTonePicker', fieldPrefix: 'sesionTono',
-        initial: tonoActual || {},
-        onSelectJs: "midiSelectToneFromPicker(t);"
-      }) %>
-      <div style="text-align:center;margin-top:0.3rem;">
-        <button onclick="guardarTono()" class="btn btn-small btn-primary">💾 Guardar tono para esta pieza</button>
-        <span id="tonoGuardadoMsg" style="font-size:0.85rem;color:#2ecc71;display:none;margin-left:0.5rem;">✓ Guardado</span>
+    <details class="roland-panel" style="margin-top:0.6rem;background:rgba(255,255,255,0.1);border-radius:8px;padding:0.6rem 0.7rem;text-align:left;">
+      <summary>🎛️ Roland: conexión y tono</summary>
+      <div class="roland-panel-body">
+        <div id="midiDeviceRow" style="display:none;margin-bottom:0.75rem;padding-bottom:0.75rem;border-bottom:1px solid rgba(255,255,255,0.2);">
+          <div class="metro-control-label" style="margin-bottom:0.4rem;">Puerto MIDI</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap;">
+            <select id="midiOutputSelect" onchange="midiSelectOutput(this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:none;font-size:0.85rem;max-width:200px;">
+              <option value="">— Salida (Roland) —</option>
+            </select>
+            <select id="midiInputSelect" onchange="midiSelectInput(this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:none;font-size:0.85rem;max-width:200px;">
+              <option value="">— Entrada (teclado) —</option>
+            </select>
+            <span id="midiStatus" style="font-size:0.8rem;color:rgba(255,255,255,0.6);"></span>
+          </div>
+          <div style="text-align:center;margin-top:0.3rem;display:flex;align-items:center;justify-content:center;gap:0.75rem;">
+            <span id="midiThruStatus" style="font-size:0.8rem;color:rgba(255,255,255,0.45);">⚡ Modo Dual: inactivo</span>
+          </div>
+          <div id="midiErrorArea" style="display:none;margin-top:0.5rem;text-align:center;">
+            <p id="midiErrorText" style="font-size:0.82rem;color:#f1948a;margin-bottom:0.4rem;"></p>
+            <button class="btn-metro" onclick="midiRetry()" style="font-size:0.82rem;padding:0.35rem 0.9rem;">Reintentar conexión</button>
+          </div>
+        </div>
+        <div style="text-align:center;color:rgba(255,255,255,0.85);font-size:0.85rem;margin-bottom:0.3rem;">Tono en el Roland</div>
+        <%- include('partials/tone_picker', {
+          idPrefix: 'sesionTonePicker', fieldPrefix: 'sesionTono',
+          initial: tonoActual || {},
+          onSelectJs: "midiSelectToneFromPicker(t);"
+        }) %>
+        <div style="text-align:center;margin-top:0.3rem;">
+          <button onclick="guardarTono()" class="btn btn-small btn-primary">💾 Guardar tono para esta pieza</button>
+          <span id="tonoGuardadoMsg" style="font-size:0.85rem;color:#2ecc71;display:none;margin-left:0.5rem;">✓ Guardado</span>
+        </div>
       </div>
-    </div>
+    </details>
     <% } %>
 
     <!-- Metrónomo -->
     <div class="metronome-widget">
-      <div id="midiDeviceRow" style="display:none;margin-bottom:0.75rem;padding-bottom:0.75rem;border-bottom:1px solid rgba(255,255,255,0.2);">
-        <div class="metro-control-label" style="margin-bottom:0.4rem;">Puerto MIDI</div>
-        <div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap;">
-          <select id="midiOutputSelect" onchange="midiSelectOutput(this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:none;font-size:0.85rem;max-width:200px;">
-            <option value="">— Salida (Roland) —</option>
-          </select>
-          <select id="midiInputSelect" onchange="midiSelectInput(this.value)" style="padding:0.4rem 0.5rem;border-radius:6px;border:none;font-size:0.85rem;max-width:200px;">
-            <option value="">— Entrada (teclado) —</option>
-          </select>
-          <span id="midiStatus" style="font-size:0.8rem;color:rgba(255,255,255,0.6);"></span>
-        </div>
-        <div style="text-align:center;margin-top:0.3rem;display:flex;align-items:center;justify-content:center;gap:0.75rem;">
-          <span id="midiThruStatus" style="font-size:0.8rem;color:rgba(255,255,255,0.45);">⚡ Modo Dual: inactivo</span>
-        </div>
-        <div id="midiErrorArea" style="display:none;margin-top:0.5rem;text-align:center;">
-          <p id="midiErrorText" style="font-size:0.82rem;color:#f1948a;margin-bottom:0.4rem;"></p>
-          <button class="btn-metro" onclick="midiRetry()" style="font-size:0.82rem;padding:0.35rem 0.9rem;">Reintentar conexión</button>
-        </div>
-      </div>
       <h3>♩ Metrónomo</h3>
       <div class="metro-controls-row">
         <div class="metro-control-group">
