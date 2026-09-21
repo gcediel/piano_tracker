@@ -29,17 +29,23 @@ function todayISO() {
   return new Date().toISOString().split('T')[0];
 }
 
-function getWeekBounds() {
+// weeksAgo=0 → semana natural (lun-dom) en curso; 1 → la semana pasada; 2 → la
+// anterior a esa; etc. endExclusive es el lunes siguiente (útil para comparar
+// columnas DATETIME con >= / <, en vez del BETWEEN inclusivo que vale para DATE).
+function getWeekBounds(weeksAgo = 0) {
   const today = new Date();
   const day  = today.getDay(); // 0=Dom
   const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(today);
-  monday.setDate(today.getDate() + diff);
+  monday.setDate(today.getDate() + diff - 7 * weeksAgo);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(monday.getDate() + 7);
   return {
     start: monday.toISOString().split('T')[0],
     end:   sunday.toISOString().split('T')[0],
+    endExclusive: nextMonday.toISOString().split('T')[0],
   };
 }
 
@@ -350,6 +356,190 @@ async function registrarFallo(pool, actividadId, piezaId, cantidad, tipoPasada) 
   };
 }
 
+// ─── Rachas de días consecutivos practicados ─────────────────────────────────
+// (movida aquí desde routes/dashboard.js para poder reutilizarla también en el
+// resumen semanal, sin duplicar la lógica).
+
+async function calcularRachas(pool) {
+  const [rows] = await pool.execute(`
+    SELECT DISTINCT fecha FROM sesiones WHERE estado = 'finalizada' ORDER BY fecha DESC
+  `);
+  const fechas = rows.map(r => r.fecha);
+  if (!fechas.length) return { actual: 0, maxima: 0 };
+
+  const dias = fechas.map(f => Math.floor(new Date(f + 'T00:00:00Z').getTime() / 86400000));
+  const hoy = Math.floor(new Date(todayISO() + 'T00:00:00Z').getTime() / 86400000);
+
+  let actual = 0;
+  if (dias[0] === hoy || dias[0] === hoy - 1) {
+    actual = 1;
+    for (let i = 1; i < dias.length; i++) {
+      if (dias[i - 1] - dias[i] === 1) actual++;
+      else break;
+    }
+  }
+
+  let maxima = 1, racha = 1;
+  for (let i = 1; i < dias.length; i++) {
+    if (dias[i - 1] - dias[i] === 1) { racha++; maxima = Math.max(maxima, racha); }
+    else racha = 1;
+  }
+  maxima = Math.max(maxima, actual);
+
+  return { actual, maxima };
+}
+
+// ─── Resumen semanal (pantalla previa al empezar la primera sesión de la semana) ──
+
+// Clave en `configuracion` donde se guarda la última semana (año+nº ISO, ej.
+// "202538") para la que ya se mostró el resumen, y así no repetirlo en cada
+// sesión de la semana. Se comparte con la app PHP: usan la misma base de datos.
+const CLAVE_RESUMEN_SEMANAL_MOSTRADO = 'resumen_semanal_mostrado_yearweek';
+
+// Año ISO 8601 + nº de semana ISO, igual que PHP date('oW').
+function isoYearWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}${String(weekNo).padStart(2, '0')}`;
+}
+
+async function debeMostrarResumenSemanal(pool) {
+  const semanaActual = isoYearWeek(new Date());
+  const [rows] = await pool.execute(`SELECT valor FROM configuracion WHERE clave = ?`, [CLAVE_RESUMEN_SEMANAL_MOSTRADO]);
+  return !rows.length || rows[0].valor !== semanaActual;
+}
+
+async function marcarResumenSemanalMostrado(pool) {
+  const semanaActual = isoYearWeek(new Date());
+  await pool.execute(
+    `INSERT INTO configuracion (clave, valor, descripcion) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE valor = ?`,
+    [CLAVE_RESUMEN_SEMANAL_MOSTRADO, semanaActual, 'Última semana (año+nº ISO) en que se mostró el resumen semanal', semanaActual]
+  );
+}
+
+// Tiempo total practicado (segundos) y días distintos con sesión en [inicio, finInclusive]
+// (sesiones.fecha es DATE, así que el BETWEEN inclusivo es exacto).
+async function tiempoYDiasEnRango(pool, inicio, finInclusive) {
+  const [[row]] = await pool.execute(`
+    SELECT COALESCE(SUM(a.tiempo_segundos),0) AS segundos, COUNT(DISTINCT s.fecha) AS dias
+    FROM actividades a JOIN sesiones s ON a.sesion_id = s.id
+    WHERE s.fecha BETWEEN ? AND ?
+  `, [inicio, finInclusive]);
+  return { segundos: row.segundos, dias: row.dias };
+}
+
+// Media de fallos/día de una pieza (todo tipo de pasada) en [inicio, finExclusivo).
+// fecha_registro es DATETIME, por eso el límite superior es exclusivo (el lunes
+// siguiente), igual que mediaFallosMetronomo. Devuelve null si no hay ningún día
+// practicado en el rango.
+async function mediaFallosRango(pool, piezaId, inicio, finExclusivo) {
+  const [rows] = await pool.execute(`
+    SELECT COUNT(DISTINCT DATE(f.fecha_registro)) AS dias, COALESCE(SUM(f.cantidad),0) AS total
+    FROM fallos f
+    WHERE f.pieza_id = ? AND f.fecha_registro >= ? AND f.fecha_registro < ?
+  `, [piezaId, inicio, finExclusivo]);
+  const dias = parseInt(rows[0]?.dias) || 0;
+  if (dias === 0) return null;
+  return { media: (parseFloat(rows[0]?.total) || 0) / dias, dias };
+}
+
+// Texto HTML breve de comparación con la semana anterior, para las stat-box.
+function compararTexto(actual, previo) {
+  if (!previo) {
+    return actual > 0 ? ' <small style="opacity:0.7;">(la semana anterior no hubo práctica)</small>' : '';
+  }
+  const pct = Math.round(((actual - previo) / previo) * 100);
+  if (pct === 0) return ' <small style="opacity:0.7;">(igual que la semana anterior)</small>';
+  const signo = pct > 0 ? '+' : '';
+  return ` <small style="opacity:0.7;">(${signo}${pct}% vs. semana anterior)</small>`;
+}
+
+// Construye los datos del resumen semanal: compara la semana natural (lun-dom)
+// inmediatamente anterior a la actual con la semana previa a esa, sin importar
+// qué día de la semana en curso se esté mostrando el resumen.
+async function obtenerResumenSemanal(pool) {
+  const pasada = getWeekBounds(1);
+  const previa = getWeekBounds(2);
+
+  const tiempo = await tiempoYDiasEnRango(pool, pasada.start, pasada.end);
+  const tiempoPrevio = await tiempoYDiasEnRango(pool, previa.start, previa.end);
+  const rachas = await calcularRachas(pool);
+
+  const [piezasTrabajadas] = await pool.execute(`
+    SELECT DISTINCT p.id, p.compositor, p.titulo
+    FROM fallos f JOIN piezas p ON f.pieza_id = p.id
+    WHERE f.fecha_registro >= ? AND f.fecha_registro < ?
+  `, [pasada.start, pasada.endExclusive]);
+
+  const mejoras = [];
+  for (const pieza of piezasTrabajadas) {
+    const actual = await mediaFallosRango(pool, pieza.id, pasada.start, pasada.endExclusive);
+    const anterior = await mediaFallosRango(pool, pieza.id, previa.start, previa.endExclusive);
+    if (!actual || !anterior) continue;
+    const delta = anterior.media - actual.media;
+    if (delta > 0.1) {
+      mejoras.push({ pieza, mediaActual: actual.media, mediaAnterior: anterior.media, delta });
+    }
+  }
+  mejoras.sort((a, b) => b.delta - a.delta);
+
+  const [piezasNuevas] = await pool.execute(`
+    SELECT id, compositor, titulo FROM piezas
+    WHERE fecha_creacion >= ? AND fecha_creacion < ?
+    ORDER BY fecha_creacion
+  `, [pasada.start, pasada.endExclusive]);
+
+  const [avisosProgresion] = await pool.execute(`
+    SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, aviso_graduacion_pendiente
+    FROM piezas
+    WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR aviso_graduacion_pendiente = 1)
+    ORDER BY compositor, titulo
+  `);
+
+  const [[tecnicaRow]] = await pool.execute(`
+    SELECT COUNT(*) AS total,
+           COALESCE(SUM(resultado='bien'),0) AS bien,
+           COALESCE(SUM(resultado='mal'),0) AS mal,
+           COUNT(DISTINCT ejercicio_id) AS ejercicios_distintos,
+           AVG(bpm_practicado) AS bpm_medio
+    FROM sesion_tecnica_ejercicios
+    WHERE fecha >= ? AND fecha < ?
+  `, [pasada.start, pasada.endExclusive]);
+
+  const [[tecnicaPreviaRow]] = await pool.execute(`
+    SELECT AVG(bpm_practicado) AS bpm_medio
+    FROM sesion_tecnica_ejercicios
+    WHERE fecha >= ? AND fecha < ?
+  `, [previa.start, previa.endExclusive]);
+
+  const tecnica = {
+    total: tecnicaRow.total || 0,
+    bien: tecnicaRow.bien || 0,
+    mal: tecnicaRow.mal || 0,
+    ejerciciosDistintos: tecnicaRow.ejercicios_distintos || 0,
+    bpmMedio: parseFloat(tecnicaRow.bpm_medio) || 0,
+    bpmMedioPrevio: tecnicaPreviaRow.bpm_medio !== null ? parseFloat(tecnicaPreviaRow.bpm_medio) : null,
+  };
+
+  let semanaFloja = false;
+  if (tiempoPrevio.dias > 0) {
+    const bajadaTiempo = tiempo.segundos < tiempoPrevio.segundos * 0.7;
+    const bajadaDias = tiempo.dias < tiempoPrevio.dias;
+    semanaFloja = bajadaTiempo || bajadaDias;
+  }
+
+  return {
+    inicio: pasada.start, fin: pasada.end,
+    tiempo, tiempoPrevio, rachas,
+    mejoras, logroPieza: mejoras[0] || null,
+    piezasNuevas, avisosProgresion, tecnica, semanaFloja,
+  };
+}
+
 // ─── Color de fallos (devuelve color CSS) ────────────────────────────────────
 
 function getColorFallos(media) {
@@ -375,4 +565,6 @@ module.exports = {
   obtenerPiezaSugerida, getColorFallos, MESES,
   resolverTonoMidi,
   mediaFallosMetronomo, evaluarProgresionMensual, revisarDemocionMantenimiento, registrarFallo,
+  calcularRachas, debeMostrarResumenSemanal, marcarResumenSemanalMostrado,
+  tiempoYDiasEnRango, mediaFallosRango, compararTexto, obtenerResumenSemanal,
 };

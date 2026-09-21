@@ -29,35 +29,6 @@ async function diasPracticadosEntre(fechaInicio, fechaFin) {
   return row.n;
 }
 
-async function calcularRachas() {
-  const [rows] = await pool.execute(`
-    SELECT DISTINCT fecha FROM sesiones WHERE estado = 'finalizada' ORDER BY fecha DESC
-  `);
-  const fechas = rows.map(r => r.fecha);
-  if (!fechas.length) return { actual: 0, maxima: 0 };
-
-  const dias = fechas.map(f => Math.floor(new Date(f + 'T00:00:00Z').getTime() / 86400000));
-  const hoy = Math.floor(new Date(h.todayISO() + 'T00:00:00Z').getTime() / 86400000);
-
-  let actual = 0;
-  if (dias[0] === hoy || dias[0] === hoy - 1) {
-    actual = 1;
-    for (let i = 1; i < dias.length; i++) {
-      if (dias[i - 1] - dias[i] === 1) actual++;
-      else break;
-    }
-  }
-
-  let maxima = 1, racha = 1;
-  for (let i = 1; i < dias.length; i++) {
-    if (dias[i - 1] - dias[i] === 1) { racha++; maxima = Math.max(maxima, racha); }
-    else racha = 1;
-  }
-  maxima = Math.max(maxima, actual);
-
-  return { actual, maxima };
-}
-
 router.get('/', async (req, res) => {
   try {
     await autoCorregirSesiones();
@@ -86,7 +57,7 @@ router.get('/', async (req, res) => {
     const pctMes    = Math.round(((await diasPracticadosEntre(month.start, today)) / hoyDate.getDate()) * 100);
     const diasAnio  = await diasPracticadosEntre(year.start, today);
 
-    const rachas = await calcularRachas();
+    const rachas = await h.calcularRachas(pool);
 
     const [[sesionEnCurso]] = await pool.execute(`SELECT * FROM sesiones WHERE estado = 'en_curso' LIMIT 1`);
 

@@ -212,6 +212,15 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
     exit;
 }
 
+// Antes de planificar/iniciar una sesión nueva: si aún no se ha mostrado el
+// resumen semanal de la semana natural en curso, interponerlo primero (no
+// aplica al ver una sesión pasada ni al continuar una ya empezada).
+if (!isset($_GET['sesion']) && !isset($_GET['ver']) && !isset($_GET['continuar'])
+    && $_SERVER['REQUEST_METHOD'] !== 'POST' && debeMostrarResumenSemanal($db)) {
+    header('Location: resumen_semanal.php');
+    exit;
+}
+
 // ============================================
 // LÓGICA NORMAL DE LA PÁGINA
 // ============================================

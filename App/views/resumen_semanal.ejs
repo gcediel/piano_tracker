@@ -1,0 +1,111 @@
+<%- include('partials/header') %>
+
+<div class="card">
+  <h2>📅 Resumen de la semana pasada</h2>
+  <p style="color:var(--gray);margin-top:-0.5rem;">
+    <%= h.formatDate(resumen.inicio) %> – <%= h.formatDate(resumen.fin) %>
+  </p>
+
+  <% if (resumen.tiempo.dias === 0) { %>
+    <p>No hubo ninguna sesión registrada la semana pasada. ¡Esta es una buena semana para retomarlo!</p>
+  <% } else { %>
+  <div class="stats-grid">
+    <div class="stat-box">
+      <h3><%= h.formatearTiempo(resumen.tiempo.segundos) %></h3>
+      <p>Tiempo practicado</p>
+      <%- h.compararTexto(resumen.tiempo.segundos, resumen.tiempoPrevio.segundos) %>
+    </div>
+    <div class="stat-box">
+      <h3><%= resumen.tiempo.dias %>/7 días</h3>
+      <p>Días practicados</p>
+      <%- h.compararTexto(resumen.tiempo.dias, resumen.tiempoPrevio.dias) %>
+    </div>
+    <div class="stat-box">
+      <h3>🔥 <%= resumen.rachas.actual %></h3>
+      <p>Racha actual (días)</p>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<% if (resumen.semanaFloja) { %>
+<div class="alert alert-info">
+  📉 Esta semana bajaste el ritmo respecto a la anterior. No pasa nada, pero si puedes, intenta recuperarlo esta semana.
+</div>
+<% } %>
+
+<% if (resumen.logroPieza) { %>
+<div class="alert alert-success">
+  🏆 <strong>Logro de la semana:</strong>
+  <%= resumen.logroPieza.pieza.compositor %> - <%= resumen.logroPieza.pieza.titulo %>
+  bajó su media de fallos de <strong><%= resumen.logroPieza.mediaAnterior.toFixed(2) %></strong>
+  a <strong><%= resumen.logroPieza.mediaActual.toFixed(2) %></strong> por pase.
+</div>
+<% } %>
+
+<% if (resumen.mejoras.length > 1) { %>
+<div class="card">
+  <h2>🎹 Piezas con mejora esta semana</h2>
+  <table>
+    <thead>
+      <tr><th>Pieza</th><th>Media de fallos (semana anterior)</th><th>Media de fallos (esta semana)</th></tr>
+    </thead>
+    <tbody>
+      <% resumen.mejoras.forEach(m => { %>
+      <tr>
+        <td><%= m.pieza.compositor %> - <%= m.pieza.titulo %></td>
+        <td><%= m.mediaAnterior.toFixed(2) %></td>
+        <td><strong><%= m.mediaActual.toFixed(2) %></strong></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (resumen.piezasNuevas.length) { %>
+<div class="card">
+  <h2>✨ Piezas nuevas en el repertorio</h2>
+  <ul>
+    <% resumen.piezasNuevas.forEach(p => { %>
+      <li><%= p.compositor %> - <%= p.titulo %></li>
+    <% }) %>
+  </ul>
+</div>
+<% } %>
+
+<% if (resumen.avisosProgresion.length) { %>
+<div class="card">
+  <h2>📈 Progresión</h2>
+  <ul>
+    <% resumen.avisosProgresion.forEach(a => { %>
+      <% if (a.sugerencia_tempo_pendiente !== null) { %>
+        <li>🎹 <%= a.compositor %> - <%= a.titulo %>: sugerencia de subir tempo de <%= a.tempo %> a <strong><%= a.sugerencia_tempo_pendiente %> BPM</strong> pendiente de confirmar en el dashboard.</li>
+      <% } %>
+      <% if (a.aviso_graduacion_pendiente) { %>
+        <li>🛠 <%= a.compositor %> - <%= a.titulo %>: pasó a repertorio de mantenimiento.</li>
+      <% } %>
+    <% }) %>
+  </ul>
+</div>
+<% } %>
+
+<% if (resumen.tecnica.total > 0) { %>
+<div class="card">
+  <h2>🛠 Técnica</h2>
+  <p>
+    <%= resumen.tecnica.ejerciciosDistintos %> ejercicios distintos trabajados
+    (<%= resumen.tecnica.bien %> con resultado "bien" de <%= resumen.tecnica.total %> valoraciones).
+    BPM medio practicado: <strong><%= Math.round(resumen.tecnica.bpmMedio) %></strong>
+    <% if (resumen.tecnica.bpmMedioPrevio != null) { %>
+      <%- h.compararTexto(resumen.tecnica.bpmMedio, resumen.tecnica.bpmMedioPrevio) %>
+    <% } %>
+  </p>
+</div>
+<% } %>
+
+<div class="card" style="text-align:center;">
+  <a href="/resumen-semanal?continuar=1" class="btn btn-success">Empezar a practicar →</a>
+</div>
+
+<%- include('partials/footer') %>

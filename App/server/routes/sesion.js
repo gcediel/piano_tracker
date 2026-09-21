@@ -176,6 +176,13 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
+    // Antes de planificar/iniciar una sesión nueva: si aún no se ha mostrado el
+    // resumen semanal de la semana natural en curso, interponerlo primero (no
+    // aplica al ver una sesión pasada ni al continuar una ya empezada).
+    if (!req.query.ver && !req.query.continuar && !req.query.sesion && await h.debeMostrarResumenSemanal(pool)) {
+      return res.redirect('/resumen-semanal');
+    }
+
     if (req.query.ver) {
       const [[sesionVer]] = await pool.execute(`SELECT * FROM sesiones WHERE id=?`, [req.query.ver]);
       if (!sesionVer) return res.redirect('/sesion');

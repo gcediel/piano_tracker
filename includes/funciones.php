@@ -276,6 +276,245 @@ function mediaFallosDia30($db, $piezaId) {
     return round(($r['total'] ?? 0) / $dias, 2);
 }
 
+// Calcula la racha de días consecutivos practicados: la racha actual (contando
+// hacia atrás desde hoy, o desde ayer si hoy aún no hay actividad registrada) y
+// la racha más larga registrada nunca. $hayActividadHoy se puede pasar si ya se
+// conoce (evita repetir la consulta); si se omite, se calcula aquí.
+function calcularRachas($db, $hayActividadHoy = null) {
+    if ($hayActividadHoy === null) {
+        $stmt = $db->prepare("SELECT SUM(tiempo_segundos) as total FROM actividades a
+                              JOIN sesiones s ON a.sesion_id = s.id
+                              WHERE s.fecha = CURDATE()");
+        $stmt->execute();
+        $hayActividadHoy = ($stmt->fetch()['total'] ?? 0) > 0;
+    }
+
+    $stmt = $db->query("SELECT DISTINCT fecha FROM sesiones ORDER BY fecha DESC");
+    $fechasSesiones = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $rachaActual = 0;
+    $rachaMasLarga = 0;
+    $rachaTemp = 0;
+
+    if (!empty($fechasSesiones)) {
+        $hoy = new DateTime();
+        $hoy->setTime(0, 0, 0);
+
+        $fechaCheck = clone $hoy;
+        if (!$hayActividadHoy) {
+            $fechaCheck->modify('-1 day');
+        }
+
+        foreach ($fechasSesiones as $fecha) {
+            $fechaSesion = new DateTime($fecha);
+            $fechaSesion->setTime(0, 0, 0);
+
+            if ($fechaSesion == $fechaCheck) {
+                $rachaActual++;
+                $fechaCheck->modify('-1 day');
+            } else {
+                break;
+            }
+        }
+
+        $fechaAnterior = null;
+        foreach ($fechasSesiones as $fecha) {
+            $fechaSesion = new DateTime($fecha);
+
+            if ($fechaAnterior === null) {
+                $rachaTemp = 1;
+            } else {
+                $diff = $fechaAnterior->diff($fechaSesion);
+                if ($diff->days == 1) {
+                    $rachaTemp++;
+                } else {
+                    $rachaMasLarga = max($rachaMasLarga, $rachaTemp);
+                    $rachaTemp = 1;
+                }
+            }
+
+            $fechaAnterior = $fechaSesion;
+        }
+        $rachaMasLarga = max($rachaMasLarga, $rachaTemp);
+    }
+
+    return ['actual' => $rachaActual, 'mas_larga' => $rachaMasLarga];
+}
+
+// ============================================
+// Resumen semanal (pantalla previa al empezar la primera sesión de la semana)
+// ============================================
+
+// Clave en `configuracion` donde se guarda la última semana (año+nº ISO, ej. "202538")
+// para la que ya se mostró el resumen, y así no repetirlo en cada sesión de la semana.
+define('CLAVE_RESUMEN_SEMANAL_MOSTRADO', 'resumen_semanal_mostrado_yearweek');
+
+// True si aún no se ha mostrado el resumen semanal para la semana ISO actual.
+function debeMostrarResumenSemanal($db) {
+    $semanaActual = date('oW');
+    $stmt = $db->prepare("SELECT valor FROM configuracion WHERE clave = :k");
+    $stmt->execute([':k' => CLAVE_RESUMEN_SEMANAL_MOSTRADO]);
+    $guardado = $stmt->fetchColumn();
+    return $guardado !== $semanaActual;
+}
+
+// Marca la semana ISO actual como ya mostrada (se llama al confirmar el resumen
+// y pasar a la sesión, no solo al visitarlo voluntariamente).
+function marcarResumenSemanalMostrado($db) {
+    $semanaActual = date('oW');
+    $stmt = $db->prepare("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?, ?, ?)
+                          ON DUPLICATE KEY UPDATE valor = ?");
+    $stmt->execute([
+        CLAVE_RESUMEN_SEMANAL_MOSTRADO,
+        $semanaActual,
+        'Última semana (año+nº ISO) en que se mostró el resumen semanal',
+        $semanaActual
+    ]);
+}
+
+// Tiempo total practicado (segundos) y días distintos con sesión en [$inicio, $finExclusivo).
+function tiempoYDiasEnRango($db, $inicio, $finExclusivo) {
+    $stmt = $db->prepare("
+        SELECT SUM(a.tiempo_segundos) as segundos, COUNT(DISTINCT s.fecha) as dias
+        FROM actividades a
+        JOIN sesiones s ON a.sesion_id = s.id
+        WHERE s.fecha >= :inicio AND s.fecha < :fin
+    ");
+    $stmt->execute([':inicio' => $inicio, ':fin' => $finExclusivo]);
+    $r = $stmt->fetch();
+    return [
+        'segundos' => (int)($r['segundos'] ?? 0),
+        'dias' => (int)($r['dias'] ?? 0),
+    ];
+}
+
+// Media de fallos/día de una pieza (todo tipo de pasada) en [$inicio, $finExclusivo).
+// Devuelve null si no hay ningún día practicado en el rango (igual criterio que
+// mediaFallosDia30, pero sobre un rango de fechas arbitrario en vez de "últimos 30 días").
+function mediaFallosRango($db, $piezaId, $inicio, $finExclusivo) {
+    $stmt = $db->prepare("
+        SELECT
+            COUNT(DISTINCT DATE(f.fecha_registro)) as dias,
+            SUM(f.cantidad) as total
+        FROM fallos f
+        WHERE f.pieza_id = :pieza_id
+          AND f.fecha_registro >= :inicio
+          AND f.fecha_registro < :fin
+    ");
+    $stmt->execute([':pieza_id' => $piezaId, ':inicio' => $inicio, ':fin' => $finExclusivo]);
+    $r = $stmt->fetch();
+    $dias = (int)($r['dias'] ?? 0);
+    if ($dias === 0) {
+        return null;
+    }
+    return ['media' => ($r['total'] ?? 0) / $dias, 'dias' => $dias];
+}
+
+// Construye los datos del resumen semanal: compara la semana natural (lun-dom)
+// inmediatamente anterior a la actual con la semana previa a esa, sin importar
+// qué día de la semana en curso se esté mostrando el resumen.
+function obtenerResumenSemanal($db) {
+    $inicioSemanaActual = date('Y-m-d', strtotime('monday this week'));
+    $inicioSemanaPasada = date('Y-m-d', strtotime($inicioSemanaActual . ' -7 days'));
+    $inicioSemanaPrevia = date('Y-m-d', strtotime($inicioSemanaActual . ' -14 days'));
+
+    $r = [
+        'inicio' => $inicioSemanaPasada,
+        'fin' => $inicioSemanaActual, // exclusivo (el domingo es el día anterior)
+    ];
+
+    $r['tiempo'] = tiempoYDiasEnRango($db, $inicioSemanaPasada, $inicioSemanaActual);
+    $r['tiempo_previo'] = tiempoYDiasEnRango($db, $inicioSemanaPrevia, $inicioSemanaPasada);
+
+    $rachas = calcularRachas($db);
+    $r['racha_actual'] = $rachas['actual'];
+    $r['racha_mas_larga'] = $rachas['mas_larga'];
+
+    // Piezas trabajadas la semana pasada, con su media de fallos y comparación
+    // con la semana previa (solo cuenta como "mejora" si hay datos en ambas semanas).
+    $stmt = $db->prepare("
+        SELECT DISTINCT p.id, p.compositor, p.titulo
+        FROM fallos f
+        JOIN piezas p ON f.pieza_id = p.id
+        WHERE f.fecha_registro >= :inicio AND f.fecha_registro < :fin
+    ");
+    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $piezasTrabajadas = $stmt->fetchAll();
+
+    $mejoras = [];
+    foreach ($piezasTrabajadas as $pieza) {
+        $actual = mediaFallosRango($db, $pieza['id'], $inicioSemanaPasada, $inicioSemanaActual);
+        $anterior = mediaFallosRango($db, $pieza['id'], $inicioSemanaPrevia, $inicioSemanaPasada);
+        if ($actual === null || $anterior === null) {
+            continue;
+        }
+        $delta = $anterior['media'] - $actual['media'];
+        if ($delta > 0.1) {
+            $mejoras[] = [
+                'pieza' => $pieza,
+                'media_actual' => $actual['media'],
+                'media_anterior' => $anterior['media'],
+                'delta' => $delta,
+            ];
+        }
+    }
+    usort($mejoras, fn($a, $b) => $b['delta'] <=> $a['delta']);
+    $r['mejoras'] = $mejoras;
+    $r['logro_pieza'] = $mejoras[0] ?? null;
+
+    // Piezas nuevas añadidas al repertorio esa semana
+    $stmt = $db->prepare("
+        SELECT id, compositor, titulo FROM piezas
+        WHERE fecha_creacion >= :inicio AND fecha_creacion < :fin
+        ORDER BY fecha_creacion
+    ");
+    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $r['piezas_nuevas'] = $stmt->fetchAll();
+
+    // Avisos de progresión pendientes (tempo subido / graduación a mantenimiento),
+    // ya evaluados en evaluarProgresionMensual (se llama antes en la página).
+    $stmt = $db->query("
+        SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, aviso_graduacion_pendiente
+        FROM piezas
+        WHERE activa = 1 AND (sugerencia_tempo_pendiente IS NOT NULL OR aviso_graduacion_pendiente = 1)
+        ORDER BY compositor, titulo
+    ");
+    $r['avisos_progresion'] = $stmt->fetchAll();
+
+    // Técnica: ejercicios trabajados esa semana y BPM medio, comparado con la semana previa
+    $stmt = $db->prepare("
+        SELECT
+            COUNT(*) as total,
+            SUM(resultado = 'bien') as bien,
+            SUM(resultado = 'mal') as mal,
+            COUNT(DISTINCT ejercicio_id) as ejercicios_distintos,
+            AVG(bpm_practicado) as bpm_medio
+        FROM sesion_tecnica_ejercicios
+        WHERE fecha >= :inicio AND fecha < :fin
+    ");
+    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $tecnica = $stmt->fetch();
+    $tecnica['total'] = (int)($tecnica['total'] ?? 0);
+    $tecnica['bien'] = (int)($tecnica['bien'] ?? 0);
+    $tecnica['mal'] = (int)($tecnica['mal'] ?? 0);
+
+    $stmt->execute([':inicio' => $inicioSemanaPrevia, ':fin' => $inicioSemanaPasada]);
+    $tecnicaPrevia = $stmt->fetch();
+    $tecnica['bpm_medio_previo'] = $tecnicaPrevia['bpm_medio'] ?? null;
+    $r['tecnica'] = $tecnica;
+
+    // Aviso neutro de "semana floja": bajada apreciable de tiempo o de días
+    // respecto a la semana anterior (solo si esa semana anterior sí tuvo práctica).
+    $r['semana_floja'] = false;
+    if ($r['tiempo_previo']['dias'] > 0) {
+        $bajadaTiempo = $r['tiempo']['segundos'] < $r['tiempo_previo']['segundos'] * 0.7;
+        $bajadaDias = $r['tiempo']['dias'] < $r['tiempo_previo']['dias'];
+        $r['semana_floja'] = $bajadaTiempo || $bajadaDias;
+    }
+
+    return $r;
+}
+
 // Inserta un registro de fallos para una pieza y, si está en mantenimiento,
 // comprueba si debe volver a aprendizaje (ver revisarDemocionMantenimiento).
 // Devuelve datos de cambio de nivel (para celebrar/avisar en el frontend) si el

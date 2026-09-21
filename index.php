@@ -88,59 +88,10 @@ $numPiezas = $stmt->fetch()['total'] ?? 0;
 // Verificar si hay actividad hoy
 $hayActividadHoy = $tiempoHoy > 0;
 
-// Calcular racha actual de práctica (no contar hoy si no hay actividad)
-$stmt = $db->query("SELECT DISTINCT fecha FROM sesiones ORDER BY fecha DESC");
-$fechasSesiones = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-$rachaActual = 0;
-$rachaMasLarga = 0;
-$rachaTemp = 0;
-
-if (!empty($fechasSesiones)) {
-    $hoy = new DateTime();
-    $hoy->setTime(0, 0, 0);
-    
-    // Calcular racha actual (desde hoy hacia atrás, pero no contar hoy si no hay actividad)
-    $fechaCheck = clone $hoy;
-    
-    // Si no hay actividad hoy, empezar a contar desde ayer
-    if (!$hayActividadHoy) {
-        $fechaCheck->modify('-1 day');
-    }
-    
-    foreach ($fechasSesiones as $fecha) {
-        $fechaSesion = new DateTime($fecha);
-        $fechaSesion->setTime(0, 0, 0);
-        
-        if ($fechaSesion == $fechaCheck) {
-            $rachaActual++;
-            $fechaCheck->modify('-1 day');
-        } else {
-            break;
-        }
-    }
-    
-    // Calcular racha más larga
-    $fechaAnterior = null;
-    foreach ($fechasSesiones as $fecha) {
-        $fechaSesion = new DateTime($fecha);
-        
-        if ($fechaAnterior === null) {
-            $rachaTemp = 1;
-        } else {
-            $diff = $fechaAnterior->diff($fechaSesion);
-            if ($diff->days == 1) {
-                $rachaTemp++;
-            } else {
-                $rachaMasLarga = max($rachaMasLarga, $rachaTemp);
-                $rachaTemp = 1;
-            }
-        }
-        
-        $fechaAnterior = $fechaSesion;
-    }
-    $rachaMasLarga = max($rachaMasLarga, $rachaTemp);
-}
+// Calcular racha actual y racha más larga de práctica
+$rachas = calcularRachas($db, $hayActividadHoy);
+$rachaActual = $rachas['actual'];
+$rachaMasLarga = $rachas['mas_larga'];
 
 // Porcentaje de días practicados esta semana
 $stmt = $db->query("
@@ -224,6 +175,7 @@ include 'includes/header.php';
         <a href="sesion.php" class="btn btn-success">Nueva sesión</a>
         <a href="repertorio.php" class="btn btn-primary">Gestionar repertorio</a>
         <a href="informes.php" class="btn btn-warning">Ver informes</a>
+        <a href="resumen_semanal.php" class="btn btn-primary">📅 Resumen semanal</a>
     </div>
 </div>
 
