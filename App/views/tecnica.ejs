@@ -45,7 +45,7 @@
   <div style="overflow-x:auto;">
   <table id="tablaEjercicios" class="display" style="width:100%">
     <thead>
-      <tr><th>Nombre</th><th title="Orden en el que se elegirán en la próxima sesión de técnica por ejercicios">Próx. práctica</th><th>BPM actual</th><th>Prácticas</th><th>Comentarios</th><th>Estado</th><th>Acciones</th></tr>
+      <tr><th>Nombre</th><th title="Orden en el que se elegirán en la próxima sesión de técnica por ejercicios">Próx. práctica</th><th>BPM actual</th><th title="Veces practicado en los últimos 30 días">Práct. 30d</th><th>Comentarios</th><th>Estado</th><th>Acciones</th></tr>
     </thead>
     <tbody>
     <% ejercicios.forEach(ej => { %>
@@ -55,7 +55,7 @@
           <%= ej.activo ? ordenProximaPractica[ej.id] : '—' %>
         </td>
         <td data-order="<%= ej.bpm %>" style="text-align:center;"><strong>♩ = <%= ej.bpm %></strong></td>
-        <td style="text-align:center;"><%= ej.num_reproducciones %></td>
+        <td style="text-align:center;"><%= ej.practicas_30d %></td>
         <td style="font-size:0.85rem;color:var(--gray);"><%= ej.comentarios || '' %></td>
         <td style="text-align:center;">
           <% if (ej.activo) { %><span style="color:var(--success);">Activo</span><% } else { %><span style="color:var(--gray);">Inactivo</span><% } %>

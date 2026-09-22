@@ -140,7 +140,7 @@ Abrir el navegador en `https://tu-servidor/` o `http://localhost/piano`
 
 ### 3. Técnica por ejercicios
 - Ve a **Técnica** para dar de alta ejercicios (nombre, BPM inicial, comentarios)
-- La tabla muestra la columna **"Próx. práctica"** con el orden en que se elegirá cada ejercicio activo en la próxima sesión (menos practicado en las últimas 30 sesiones, empatando por fecha de última práctica y BPM)
+- La tabla muestra la columna **"Próx. práctica"** con el orden en que se elegirá cada ejercicio activo en la próxima sesión (menos practicado en los últimos 30 días, empatando por BPM), junto a "Práct. 30d" con ese mismo número
 - En una sesión, la actividad de tipo "Técnica (ejercicios)" rota siguiendo ese mismo orden y sube o baja el BPM según valores Bien/Neutro/Mal tras cada intento
 - Tras varios "Mal" seguidos en el mismo ejercicio, rota automáticamente al siguiente
 - Desde **Admin** se puede resetear el BPM de todos los ejercicios a la vez

@@ -209,37 +209,21 @@ router.get('/', async (req, res) => {
 
       let ejerciciosPendientes = [], totalEjercicios = 0, ejerciciosHechos = 0;
       if (actividadActual && actividadActual.tipo === 'tecnica_ejercicios') {
-        const [sesionesRows] = await pool.execute(`
-          SELECT a.sesion_id AS sid
-          FROM actividades a JOIN sesiones s ON s.id = a.sesion_id
-          WHERE a.tipo = 'tecnica_ejercicios'
-          GROUP BY a.sesion_id
-          ORDER BY MAX(s.fecha) DESC, a.sesion_id DESC
-          LIMIT 30
-        `);
-        const sesionesRecientes = sesionesRows.map(r => r.sid);
-        const sesionesIn = sesionesRecientes.length ? sesionesRecientes.join(',') : '0';
-
+        // Orden: menos prácticas en los últimos 30 días primero; en caso de
+        // empate, BPM más bajo y luego nombre.
         const [pendientesRows] = await pool.execute(`
           SELECT et.*,
-                 COALESCE(reciente.veces, 0) AS veces_recientes,
-                 ultima.fecha AS ultima_fecha
+                 COALESCE(reciente.veces, 0) AS practicas_30d
           FROM ejercicios_tecnica et
           LEFT JOIN (
-            SELECT ste.ejercicio_id, COUNT(*) AS veces
-            FROM sesion_tecnica_ejercicios ste
-            JOIN actividades a ON a.id = ste.actividad_id
-            WHERE a.sesion_id IN (${sesionesIn})
-            GROUP BY ste.ejercicio_id
-          ) reciente ON reciente.ejercicio_id = et.id
-          LEFT JOIN (
-            SELECT ejercicio_id, MAX(fecha) AS fecha
+            SELECT ejercicio_id, COUNT(*) AS veces
             FROM sesion_tecnica_ejercicios
+            WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
             GROUP BY ejercicio_id
-          ) ultima ON ultima.ejercicio_id = et.id
+          ) reciente ON reciente.ejercicio_id = et.id
           WHERE et.activo = 1
             AND et.id NOT IN (SELECT ejercicio_id FROM sesion_tecnica_ejercicios WHERE actividad_id = ?)
-          ORDER BY veces_recientes ASC, ultima_fecha ASC, et.bpm ASC, et.nombre ASC
+          ORDER BY practicas_30d ASC, et.bpm ASC, et.nombre ASC
         `, [actividadActual.id]);
         ejerciciosPendientes = pendientesRows;
 

@@ -74,50 +74,28 @@ async function renderPage(req, res, mensaje, error) {
       ejercicioEditar = row || null;
     }
 
+    // Ejercicios con el número de prácticas en los últimos 30 días (mismo
+    // criterio que usa la cola de la sesión, ver server/routes/sesion.js).
     const [ejercicios] = await pool.execute(`
-      SELECT e.*, COUNT(se.id) AS num_reproducciones
+      SELECT e.*, COALESCE(r.veces, 0) AS practicas_30d
       FROM ejercicios_tecnica e
-      LEFT JOIN sesion_tecnica_ejercicios se ON se.ejercicio_id = e.id
-      GROUP BY e.id
+      LEFT JOIN (
+        SELECT ejercicio_id, COUNT(*) AS veces
+        FROM sesion_tecnica_ejercicios
+        WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        GROUP BY ejercicio_id
+      ) r ON r.ejercicio_id = e.id
       ORDER BY e.bpm ASC, e.nombre ASC
     `);
 
     // Orden de "próxima práctica": mismo criterio que la cola de una sesión de
-    // técnica por ejercicios (ver server/routes/sesion.js) — veces practicado
-    // en las últimas 30 sesiones de técnica por ejercicios (no en total: un
-    // ejercicio antiguo muy practicado no debe quedar siempre al final),
-    // empatando por fecha de última práctica, BPM y nombre.
-    const [sesionesRows] = await pool.execute(`
-      SELECT a.sesion_id AS sid
-      FROM actividades a JOIN sesiones s ON s.id = a.sesion_id
-      WHERE a.tipo = 'tecnica_ejercicios'
-      GROUP BY a.sesion_id
-      ORDER BY MAX(s.fecha) DESC, a.sesion_id DESC
-      LIMIT 30
-    `);
-    const sesionesIn = sesionesRows.length ? sesionesRows.map(r => r.sid).join(',') : '0';
-    const [rankRows] = await pool.execute(`
-      SELECT et.id,
-             COALESCE(reciente.veces, 0) AS veces_recientes,
-             ultima.fecha AS ultima_fecha
-      FROM ejercicios_tecnica et
-      LEFT JOIN (
-        SELECT ste.ejercicio_id, COUNT(*) AS veces
-        FROM sesion_tecnica_ejercicios ste
-        JOIN actividades a ON a.id = ste.actividad_id
-        WHERE a.sesion_id IN (${sesionesIn})
-        GROUP BY ste.ejercicio_id
-      ) reciente ON reciente.ejercicio_id = et.id
-      LEFT JOIN (
-        SELECT ejercicio_id, MAX(fecha) AS fecha
-        FROM sesion_tecnica_ejercicios
-        GROUP BY ejercicio_id
-      ) ultima ON ultima.ejercicio_id = et.id
-      WHERE et.activo = 1
-      ORDER BY veces_recientes ASC, ultima_fecha ASC, et.bpm ASC, et.nombre ASC
-    `);
+    // técnica por ejercicios — menos prácticas en los últimos 30 días primero;
+    // en caso de empate, BPM más bajo y luego nombre.
     const ordenProximaPractica = {};
-    rankRows.forEach((r, i) => { ordenProximaPractica[r.id] = i + 1; });
+    ejercicios
+      .filter(e => e.activo)
+      .sort((a, b) => a.practicas_30d - b.practicas_30d || a.bpm - b.bpm || a.nombre.localeCompare(b.nombre))
+      .forEach((e, i) => { ordenProximaPractica[e.id] = i + 1; });
 
     res.render('tecnica', { pageTitle: 'Técnica - Piano Tracker', currentPage: 'tecnica', ejercicios, ejercicioEditar, mensaje, error, ordenProximaPractica, h });
   } catch (err) {

@@ -479,12 +479,12 @@ Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan aut
 
 ### 4. Técnica (`tecnica.php`)
 
-CRUD de ejercicios de técnica (nombre, BPM, comentarios, bloque/número, activo/inactivo), con tabla DataTables y contador de reproducciones por ejercicio.
+CRUD de ejercicios de técnica (nombre, BPM, comentarios, bloque/número, activo/inactivo), con tabla DataTables y columna "Práct. 30d" (veces practicado en los últimos 30 días).
 
 - **Columna "Próx. práctica":** posición de cada ejercicio activo en la cola de la próxima sesión (ver orden de rotación más abajo); la tabla se ordena por esa columna por defecto. Los ejercicios inactivos no tienen posición (nunca se seleccionan) y se muestran con "—"
 
 **En sesión** (actividad de tipo `tecnica_ejercicios`, lógica en `sesion.php` / `App/server/routes/sesion.js`):
-- **Orden de rotación:** `ORDER BY veces_recientes ASC, ultima_fecha ASC, bpm ASC, nombre ASC`, donde `veces_recientes` cuenta las prácticas solo en las **últimas 30 sesiones** de técnica por ejercicios (no el total histórico) y `ultima_fecha` es la fecha de la última práctica de ese ejercicio. Así, un ejercicio muy practicado hace tiempo pero abandonado ahora vuelve a subir en la cola en vez de quedar siempre al final. Mismo criterio en ambas apps (unificado en v1.10; antes la web usaba el total histórico sin ventana)
+- **Orden de rotación:** `ORDER BY practicas_30d ASC, bpm ASC, nombre ASC`, donde `practicas_30d` cuenta las veces practicado en los **últimos 30 días** (no el total histórico ni una ventana de sesiones), empatando por BPM y luego nombre. Así, un ejercicio muy practicado hace tiempo pero sin tocar en el último mes vuelve a subir en la cola en vez de quedar siempre al final. Mismo criterio en ambas apps y en la columna "Práct. 30d"/"Próx. práctica" de `tecnica.php` (unificado en v1.10; antes la web usaba el total histórico y Electron una ventana de 30 sesiones, no de días — ambos criterios se probaron y descartaron por no reflejar bien la práctica reciente)
 - **Escalera de BPM adaptativa** tras cada intento (acción AJAX `ejercicio_valorar`): `Mal` → BPM−1, `Bien` → BPM+1, `Neutro` → sin cambio; suelo de 20 BPM
 - **Tope de reintentos consecutivos en "Mal"** (`TOPE_INTENTOS_MAL`): al alcanzarlo, rota al siguiente ejercicio en vez de insistir indefinidamente
 - **Reseteo individual** desde `tecnica.php`: BPM a 120 y borra el historial de prácticas de ese ejercicio
@@ -848,8 +848,8 @@ cp assets/emoji/1f3af.svg App/assets/emoji/
 - ✅ Ver [Emojis (Twemoji auto-alojado)](#emojis-twemoji-auto-alojado) para cómo añadir el SVG de un emoji nuevo
 
 **Técnica — orden de "próxima práctica":**
-- ✅ Nueva columna en la tabla de `tecnica.php`/`tecnica.ejs` con la posición de cada ejercicio activo en la cola de la próxima sesión; tabla ordenada por esa columna por defecto
-- ✅ Unificado el criterio de rotación entre ambas apps: ventana de las últimas 30 sesiones de técnica (antes la web usaba el total histórico sin ventana) con desempate por fecha de última práctica, BPM y nombre — ver sección 4
+- ✅ Nueva columna "Próx. práctica" en la tabla de `tecnica.php`/`tecnica.ejs` con la posición de cada ejercicio activo en la cola de la próxima sesión; tabla ordenada por esa columna por defecto. La columna "Prácticas" (total histórico) pasa a ser "Práct. 30d" (últimos 30 días), el mismo número que decide el orden
+- ✅ Unificado el criterio de rotación entre ambas apps: veces practicado en los **últimos 30 días** (antes la web usaba el total histórico y Electron una ventana de las últimas 30 sesiones), con desempate por BPM y nombre — ver sección 4
 
 **Repertorio — piezas inactivas ocultas por defecto:**
 - ✅ El checkbox "Incluir piezas desactivadas" empieza desmarcado en ambas apps; había que activarlo antes para verlas, ahora es al revés

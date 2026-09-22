@@ -109,58 +109,34 @@ if (isset($_GET['editar'])) {
     $ejercicioEditar = $stmt->fetch();
 }
 
-// Cargar todos los ejercicios con contador de reproducciones
-$stmt = $db->query("
-    SELECT e.*, COUNT(se.id) AS num_reproducciones
+// Cargar todos los ejercicios con el número de prácticas en los últimos 30 días
+// (mismo criterio que usa la cola de la sesión, ver más abajo y sesion.php).
+$fechaLimite = date('Y-m-d', strtotime('-30 days'));
+$stmt = $db->prepare("
+    SELECT e.*, COALESCE(r.veces, 0) AS practicas_30d
     FROM ejercicios_tecnica e
-    LEFT JOIN sesion_tecnica_ejercicios se ON se.ejercicio_id = e.id
-    GROUP BY e.id
+    LEFT JOIN (
+        SELECT ejercicio_id, COUNT(*) AS veces
+        FROM sesion_tecnica_ejercicios
+        WHERE fecha >= :fecha_limite
+        GROUP BY ejercicio_id
+    ) r ON r.ejercicio_id = e.id
     ORDER BY e.bpm ASC, e.nombre ASC
 ");
+$stmt->execute([':fecha_limite' => $fechaLimite]);
 $ejercicios = $stmt->fetchAll();
 
 // Orden de "próxima práctica": mismo criterio que la cola de una sesión de
-// técnica por ejercicios (ver sesion.php) — veces practicado en las últimas 30
-// sesiones de técnica por ejercicios (no el total histórico, para que un
-// ejercicio muy practicado hace tiempo pero abandonado ahora vuelva a la cola),
-// empatando por fecha de última práctica, BPM y nombre.
-$stmt = $db->prepare("
-    SELECT a.sesion_id
-    FROM actividades a
-    JOIN sesiones s ON s.id = a.sesion_id
-    WHERE a.tipo = 'tecnica_ejercicios'
-    GROUP BY a.sesion_id
-    ORDER BY MAX(s.fecha) DESC, a.sesion_id DESC
-    LIMIT 30
-");
-$stmt->execute();
-$sesionesRecientes = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
-$sesionesIn = $sesionesRecientes ? implode(',', $sesionesRecientes) : '0';
-
-$stmt = $db->prepare("
-    SELECT et.id,
-           COALESCE(reciente.veces, 0) AS veces_recientes,
-           ultima.fecha AS ultima_fecha
-    FROM ejercicios_tecnica et
-    LEFT JOIN (
-        SELECT ste.ejercicio_id, COUNT(*) AS veces
-        FROM sesion_tecnica_ejercicios ste
-        JOIN actividades a ON a.id = ste.actividad_id
-        WHERE a.sesion_id IN ($sesionesIn)
-        GROUP BY ste.ejercicio_id
-    ) reciente ON reciente.ejercicio_id = et.id
-    LEFT JOIN (
-        SELECT ejercicio_id, MAX(fecha) AS fecha
-        FROM sesion_tecnica_ejercicios
-        GROUP BY ejercicio_id
-    ) ultima ON ultima.ejercicio_id = et.id
-    WHERE et.activo = 1
-    ORDER BY veces_recientes ASC, ultima_fecha ASC, et.bpm ASC, et.nombre ASC
-");
-$stmt->execute();
+// técnica por ejercicios (ver sesion.php) — menos prácticas en los últimos 30
+// días primero; en caso de empate, BPM más bajo y luego nombre.
+$ejerciciosActivos = array_values(array_filter($ejercicios, fn($e) => $e['activo']));
+usort($ejerciciosActivos, fn($a, $b) =>
+    [(int)$a['practicas_30d'], (int)$a['bpm'], $a['nombre']]
+    <=> [(int)$b['practicas_30d'], (int)$b['bpm'], $b['nombre']]
+);
 $ordenProximaPractica = [];
-foreach ($stmt->fetchAll() as $i => $r) {
-    $ordenProximaPractica[$r['id']] = $i + 1;
+foreach ($ejerciciosActivos as $i => $e) {
+    $ordenProximaPractica[$e['id']] = $i + 1;
 }
 
 include 'includes/header.php';
@@ -229,7 +205,7 @@ include 'includes/header.php';
                 <th>Nombre</th>
                 <th title="Orden en el que se elegirán en la próxima sesión de técnica por ejercicios">Próx. práctica</th>
                 <th>BPM</th>
-                <th>Prácticas</th>
+                <th title="Veces practicado en los últimos 30 días">Práct. 30d</th>
                 <th>Comentarios</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -243,7 +219,7 @@ include 'includes/header.php';
                     <?php echo $ej['activo'] ? $ordenProximaPractica[$ej['id']] : '—'; ?>
                 </td>
                 <td data-order="<?php echo $ej['bpm']; ?>" style="text-align:center;"><strong>♩ = <?php echo $ej['bpm']; ?></strong></td>
-                <td style="text-align:center;"><?php echo $ej['num_reproducciones']; ?></td>
+                <td style="text-align:center;"><?php echo $ej['practicas_30d']; ?></td>
                 <td style="font-size:0.85rem; color:#666;"><?php echo htmlspecialchars($ej['comentarios'] ?? ''); ?></td>
                 <td style="text-align:center;">
                     <?php echo $ej['activo'] ? '<span style="color:#27ae60;">Activo</span>' : '<span style="color:#999;">Inactivo</span>'; ?>
