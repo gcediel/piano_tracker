@@ -410,6 +410,35 @@ function mediaFallosRango($db, $piezaId, $inicio, $finExclusivo) {
     return ['media' => ($r['total'] ?? 0) / $dias, 'dias' => $dias];
 }
 
+// Puntuación total del repertorio en una fecha de referencia: para cada pieza
+// con al menos $minDias días practicados en los 30 días anteriores a
+// $fechaReferencia (exclusive), suma (10 - media de fallos/día en esa ventana).
+// Excluye piezas con menos práctica en la ventana, para que una sesión aislada
+// no decida la puntuación de la pieza. Usado en el resumen semanal y, con
+// ventana mensual en vez de rodante, en el informe anual.
+function puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 3) {
+    $fechaInicio = date('Y-m-d', strtotime($fechaReferencia . ' -30 days'));
+    $stmt = $db->prepare("
+        SELECT DISTINCT p.id
+        FROM fallos f
+        JOIN piezas p ON f.pieza_id = p.id
+        WHERE f.fecha_registro >= :inicio AND f.fecha_registro < :fin
+    ");
+    $stmt->execute([':inicio' => $fechaInicio, ':fin' => $fechaReferencia]);
+    $piezaIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $total = 0;
+    $piezasContadas = 0;
+    foreach ($piezaIds as $piezaId) {
+        $r = mediaFallosRango($db, $piezaId, $fechaInicio, $fechaReferencia);
+        if ($r !== null && $r['dias'] >= $minDias) {
+            $total += 10 - $r['media'];
+            $piezasContadas++;
+        }
+    }
+    return ['total' => round($total, 1), 'piezas' => $piezasContadas];
+}
+
 // Construye los datos del resumen semanal: compara la semana natural (lun-dom)
 // inmediatamente anterior a la actual con la semana previa a esa, sin importar
 // qué día de la semana en curso se esté mostrando el resumen.
@@ -425,6 +454,12 @@ function obtenerResumenSemanal($db) {
 
     $r['tiempo'] = tiempoYDiasEnRango($db, $inicioSemanaPasada, $inicioSemanaActual);
     $r['tiempo_previo'] = tiempoYDiasEnRango($db, $inicioSemanaPrevia, $inicioSemanaPasada);
+
+    // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
+    // cada semana, para poder mostrar la diferencia semana contra semana.
+    $r['puntuacion'] = puntuacionTotalEnFecha($db, $inicioSemanaActual, 3);
+    $r['puntuacion_previa'] = puntuacionTotalEnFecha($db, $inicioSemanaPasada, 3);
+    $r['puntuacion_diff'] = round($r['puntuacion']['total'] - $r['puntuacion_previa']['total'], 1);
 
     $rachas = calcularRachas($db);
     $r['racha_actual'] = $rachas['actual'];

@@ -62,6 +62,30 @@ include 'includes/header.php';
     <?php endif; ?>
 </div>
 
+<div class="card">
+    <h2>🏅 Puntuación de repertorio</h2>
+    <div class="stats-grid">
+        <div class="stat-box">
+            <h3><?php echo number_format($resumen['puntuacion']['total'], 1); ?></h3>
+            <p><?php echo $resumen['puntuacion']['piezas']; ?> piezas puntuadas</p>
+            <?php
+            $diff = $resumen['puntuacion_diff'];
+            if ($resumen['puntuacion_previa']['piezas'] === 0) {
+                echo ' <small style="opacity:0.7;">(sin datos suficientes la semana pasada)</small>';
+            } elseif (abs($diff) < 0.05) {
+                echo ' <small style="opacity:0.7;">(igual que la semana anterior)</small>';
+            } else {
+                $signo = $diff > 0 ? '+' : '';
+                echo ' <small style="opacity:0.7;">(' . $signo . number_format($diff, 1) . ' vs. semana anterior)</small>';
+            }
+            ?>
+        </div>
+    </div>
+    <p style="color: var(--dark); opacity: 0.7; font-size: 0.85rem;">
+        Suma de (10 − media de fallos/día en los últimos 30 días) de las piezas con al menos 3 días practicados en esa ventana.
+    </p>
+</div>
+
 <?php if ($resumen['semana_floja']): ?>
 <div class="alert alert-info">
     📉 Esta semana bajaste el ritmo respecto a la anterior. No pasa nada, pero si puedes, intenta recuperarlo esta semana.

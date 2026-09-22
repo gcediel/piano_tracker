@@ -100,18 +100,37 @@ router.get('/', async (req, res) => {
           instrumento: d.instrumento, tempo: d.tempo, tempo_objetivo: d.tempo_objetivo, estado: d.estado,
           ponderacion: d.ponderacion,
           medias_por_mes: Object.fromEntries(todosMeses.map(m => [m, null])),
+          dias_por_mes: Object.fromEntries(todosMeses.map(m => [m, 0])),
           dias_practicados_anio: 0, total_fallos_anio: 0,
         };
       }
       const totalFallos = parseInt(d.total_fallos) || 0;
       const diasPracticados = parseInt(d.dias_practicados) || 0;
       piezasMap[d.id].medias_por_mes[d.mes] = diasPracticados > 0 ? totalFallos / diasPracticados : 0;
+      piezasMap[d.id].dias_por_mes[d.mes] = diasPracticados;
       piezasMap[d.id].dias_practicados_anio += diasPracticados;
       piezasMap[d.id].total_fallos_anio += totalFallos;
     });
     const piezas = Object.values(piezasMap).map(p => ({
       ...p, media_fallos_anio: p.dias_practicados_anio > 0 ? p.total_fallos_anio / p.dias_practicados_anio : 0,
     }));
+
+    // Puntuación total del repertorio por mes: mismo criterio que en el resumen
+    // semanal (ver puntuacionTotalEnFecha en helpers.js), pero con ventana de
+    // calendario mensual en vez de rodante de 30 días. Suma, por mes, (10 - media
+    // de fallos) de las piezas con al menos 3 días practicados ese mes.
+    const puntuacionPorMes = Object.fromEntries(todosMeses.map(m => [m, 0]));
+    const piezasPuntuadasPorMes = Object.fromEntries(todosMeses.map(m => [m, 0]));
+    piezas.forEach(p => {
+      todosMeses.forEach(m => {
+        const dias = p.dias_por_mes[m];
+        const media = p.medias_por_mes[m];
+        if (dias >= 3 && media !== null) {
+          puntuacionPorMes[m] += 10 - media;
+          piezasPuntuadasPorMes[m]++;
+        }
+      });
+    });
 
     const categorias = {
       excelente: { count: 0, color: '#2E5F8A', label: 'Excelente (< 0.5)' },
@@ -135,6 +154,7 @@ router.get('/', async (req, res) => {
       pageTitle: 'Informe Anual - Piano Tracker', currentPage: 'informes',
       anio, todosMeses, MESES_CORTOS, actividades, tiempoTotalAnio, diasTotalAnio,
       piezas, categorias, totalPiezas: piezas.length,
+      puntuacionPorMes, piezasPuntuadasPorMes,
       COLORES_ACTIVIDADES, getColorFallos, getColorTextoFallos, claseCeldaMedia,
       h,
     });

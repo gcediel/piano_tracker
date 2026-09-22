@@ -458,6 +458,35 @@ function compararTexto(actual, previo) {
   return ` <small style="opacity:0.7;">(${signo}${pct}% vs. semana anterior)</small>`;
 }
 
+// Puntuación total del repertorio en una fecha de referencia: para cada pieza
+// con al menos minDias días practicados en los 30 días anteriores a
+// fechaReferencia (exclusive), suma (10 - media de fallos/día en esa ventana).
+// Excluye piezas con menos práctica en la ventana, para que una sesión aislada
+// no decida la puntuación de la pieza. Usado en el resumen semanal y, con
+// ventana mensual en vez de rodante, en el informe anual.
+async function puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 3) {
+  const inicio = new Date(fechaReferencia + 'T00:00:00Z');
+  inicio.setUTCDate(inicio.getUTCDate() - 30);
+  const fechaInicio = inicio.toISOString().split('T')[0];
+
+  const [piezasTrabajadas] = await pool.execute(`
+    SELECT DISTINCT p.id
+    FROM fallos f JOIN piezas p ON f.pieza_id = p.id
+    WHERE f.fecha_registro >= ? AND f.fecha_registro < ?
+  `, [fechaInicio, fechaReferencia]);
+
+  let total = 0;
+  let piezasContadas = 0;
+  for (const { id } of piezasTrabajadas) {
+    const r = await mediaFallosRango(pool, id, fechaInicio, fechaReferencia);
+    if (r && r.dias >= minDias) {
+      total += 10 - r.media;
+      piezasContadas++;
+    }
+  }
+  return { total: Math.round(total * 10) / 10, piezas: piezasContadas };
+}
+
 // Construye los datos del resumen semanal: compara la semana natural (lun-dom)
 // inmediatamente anterior a la actual con la semana previa a esa, sin importar
 // qué día de la semana en curso se esté mostrando el resumen.
@@ -467,6 +496,13 @@ async function obtenerResumenSemanal(pool) {
 
   const tiempo = await tiempoYDiasEnRango(pool, pasada.start, pasada.end);
   const tiempoPrevio = await tiempoYDiasEnRango(pool, previa.start, previa.end);
+
+  // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
+  // cada semana, para poder mostrar la diferencia semana contra semana.
+  const puntuacion = await puntuacionTotalEnFecha(pool, pasada.endExclusive, 3);
+  const puntuacionPrevia = await puntuacionTotalEnFecha(pool, previa.endExclusive, 3);
+  const puntuacionDiff = Math.round((puntuacion.total - puntuacionPrevia.total) * 10) / 10;
+
   const rachas = await calcularRachas(pool);
 
   const [piezasTrabajadas] = await pool.execute(`
@@ -535,6 +571,7 @@ async function obtenerResumenSemanal(pool) {
   return {
     inicio: pasada.start, fin: pasada.end,
     tiempo, tiempoPrevio, rachas,
+    puntuacion, puntuacionPrevia, puntuacionDiff,
     mejoras, logroPieza: mejoras[0] || null,
     piezasNuevas, avisosProgresion, tecnica, semanaFloja,
   };
@@ -567,4 +604,5 @@ module.exports = {
   mediaFallosMetronomo, evaluarProgresionMensual, revisarDemocionMantenimiento, registrarFallo,
   calcularRachas, debeMostrarResumenSemanal, marcarResumenSemanalMostrado,
   tiempoYDiasEnRango, mediaFallosRango, compararTexto, obtenerResumenSemanal,
+  puntuacionTotalEnFecha,
 };

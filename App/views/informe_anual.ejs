@@ -191,6 +191,14 @@
           <td style="font-weight:bold;"><%= pieza.media_fallos_anio.toFixed(2) %></td>
         </tr>
         <% }) %>
+        <tr style="background:#f5f5f5;font-weight:bold;border-top:3px solid var(--primary);">
+          <td class="col-fija" colspan="9" style="text-align:left;padding-left:0.5rem;color:black;">🏅 PUNTUACIÓN TOTAL</td>
+          <% todosMeses.forEach(m => { %>
+          <td style="color:black;"><%= piezasPuntuadasPorMes[m] > 0 ? puntuacionPorMes[m].toFixed(1) : '-' %></td>
+          <% }) %>
+          <td style="background:#e8f5e9;"></td>
+          <td style="background:#fff3e0;"></td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -256,6 +264,7 @@
       </div>
     </div>
     <div style="margin-top:0.75rem;"><strong>Celdas mensuales:</strong> Media de fallos/día en ese mes.</div>
+    <div style="margin-top:0.75rem;"><strong>Fila de puntuación total:</strong> suma de (10 − media de fallos) de las piezas con al menos 3 días practicados ese mes; las piezas con menos práctica ese mes no cuentan.</div>
   </div>
 </div>
 <% } else { %>

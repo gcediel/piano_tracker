@@ -156,18 +156,37 @@ foreach ($datosPiezas as $dato) {
             'estado' => $dato['estado'],
             'ponderacion' => $dato['ponderacion'],
             'medias_por_mes' => array_fill(1, 12, null),
+            'dias_por_mes' => array_fill(1, 12, 0),
             'dias_practicados_anio' => 0,
             'total_fallos_anio' => 0
         ];
     }
-    
+
     $mes = (int)$dato['mes'];
     $totalFallos = (int)$dato['total_fallos'];
     $diasPracticados = (int)$dato['dias_practicados'];
-    
+
     $piezas[$dato['id']]['medias_por_mes'][$mes] = $diasPracticados > 0 ? $totalFallos / $diasPracticados : 0;
+    $piezas[$dato['id']]['dias_por_mes'][$mes] = $diasPracticados;
     $piezas[$dato['id']]['dias_practicados_anio'] += $diasPracticados;
     $piezas[$dato['id']]['total_fallos_anio'] += $totalFallos;
+}
+
+// Puntuación total del repertorio por mes: mismo criterio que en el resumen
+// semanal (ver puntuacionTotalEnFecha en includes/funciones.php), pero con
+// ventana de calendario mensual en vez de rodante de 30 días. Suma, por mes,
+// (10 - media de fallos) de las piezas con al menos 3 días practicados ese mes.
+$puntuacionPorMes = array_fill(1, 12, 0);
+$piezasPuntuadasPorMes = array_fill(1, 12, 0);
+foreach ($piezas as $pieza) {
+    foreach ($todosMeses as $mes) {
+        $dias = $pieza['dias_por_mes'][$mes];
+        $media = $pieza['medias_por_mes'][$mes];
+        if ($dias >= 3 && $media !== null) {
+            $puntuacionPorMes[$mes] += 10 - $media;
+            $piezasPuntuadasPorMes[$mes]++;
+        }
+    }
 }
 
 // Calcular media anual
@@ -524,10 +543,20 @@ include 'includes/header.php';
                     </td>
                 </tr>
                 <?php endforeach; ?>
+                <tr style="background: #f5f5f5; font-weight: bold; border-top: 3px solid var(--primary);">
+                    <td class="col-fija" colspan="9" style="text-align: left; padding-left: 0.5rem; color: black;">🏅 PUNTUACIÓN TOTAL</td>
+                    <?php foreach ($todosMeses as $mes): ?>
+                    <td style="color: black;">
+                        <?php echo $piezasPuntuadasPorMes[$mes] > 0 ? number_format($puntuacionPorMes[$mes], 1) : '-'; ?>
+                    </td>
+                    <?php endforeach; ?>
+                    <td style="background: #e8f5e9;"></td>
+                    <td style="background: #fff3e0;"></td>
+                </tr>
             </tbody>
         </table>
     </div>
-    
+
     <div style="margin-top: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <h4 style="margin-top: 0; margin-bottom: 1rem; text-align: center;">📊 Distribución de Piezas por Rendimiento Anual</h4>
         <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2rem;">
@@ -617,6 +646,9 @@ include 'includes/header.php';
         </div>
         <div style="margin-top: 0.75rem;">
             <strong>Celdas mensuales:</strong> Media de fallos/día en ese mes.
+        </div>
+        <div style="margin-top: 0.75rem;">
+            <strong>Fila de puntuación total:</strong> suma de (10 − media de fallos) de las piezas con al menos 3 días practicados ese mes; las piezas con menos práctica ese mes no cuentan.
         </div>
     </div>
 </div>
