@@ -377,6 +377,7 @@ CRUD completo de piezas:
 - **Tabla de piezas** con DataTables: muestra número de programa GM en columna "Tono GM", más columnas "Objetivo" y "Categoría" (Aprendizaje/Mantenimiento)
 - **Botón manual "A mantenimiento"**: pasa la pieza a `estado = 'mantenimiento'` sin esperar a la graduación automática
 - **Estadísticas por pieza** (últimos 30 días): días practicados, media de fallos, código de color
+- **Piezas inactivas ocultas por defecto:** checkbox "Incluir piezas desactivadas" (desmarcado por defecto) para mostrarlas u ocultarlas — filtrado client-side en la web (`$.fn.dataTable.ext.search`), tarjeta aparte oculta con `display:none` en `App/`
 
 **Códigos de color (media fallos/día):**
 
@@ -480,8 +481,10 @@ Al avanzar a la siguiente pieza en Repertorio, ambos controles se actualizan aut
 
 CRUD de ejercicios de técnica (nombre, BPM, comentarios, bloque/número, activo/inactivo), con tabla DataTables y contador de reproducciones por ejercicio.
 
-**En sesión** (actividad de tipo `tecnica_ejercicios`, lógica en `sesion.php`):
-- **Orden de rotación:** `ORDER BY veces_total ASC, bpm ASC, nombre ASC` — prioriza el ejercicio con menos repeticiones históricas, sin tener en cuenta la última valoración
+- **Columna "Próx. práctica":** posición de cada ejercicio activo en la cola de la próxima sesión (ver orden de rotación más abajo); la tabla se ordena por esa columna por defecto. Los ejercicios inactivos no tienen posición (nunca se seleccionan) y se muestran con "—"
+
+**En sesión** (actividad de tipo `tecnica_ejercicios`, lógica en `sesion.php` / `App/server/routes/sesion.js`):
+- **Orden de rotación:** `ORDER BY veces_recientes ASC, ultima_fecha ASC, bpm ASC, nombre ASC`, donde `veces_recientes` cuenta las prácticas solo en las **últimas 30 sesiones** de técnica por ejercicios (no el total histórico) y `ultima_fecha` es la fecha de la última práctica de ese ejercicio. Así, un ejercicio muy practicado hace tiempo pero abandonado ahora vuelve a subir en la cola en vez de quedar siempre al final. Mismo criterio en ambas apps (unificado en v1.10; antes la web usaba el total histórico sin ventana)
 - **Escalera de BPM adaptativa** tras cada intento (acción AJAX `ejercicio_valorar`): `Mal` → BPM−1, `Bien` → BPM+1, `Neutro` → sin cambio; suelo de 20 BPM
 - **Tope de reintentos consecutivos en "Mal"** (`TOPE_INTENTOS_MAL`): al alcanzarlo, rota al siguiente ejercicio en vez de insistir indefinidamente
 - **Reseteo individual** desde `tecnica.php`: BPM a 120 y borra el historial de prácticas de ese ejercicio
@@ -843,6 +846,13 @@ cp assets/emoji/1f3af.svg App/assets/emoji/
 - ✅ Corregido que los emojis se vieran como un cuadrado vacío ("tofu") en sistemas sin fuente de emoji instalada (típico en Linux): `assets/js/twemoji.min.js` + `assets/js/emoji-render.js` (nuevo) sustituyen cada emoji del DOM por un `<img>` a un SVG local en `assets/emoji/` (48 SVG de Twemoji, licencia CC-BY 4.0, sin depender de ningún CDN externo ni de la fuente del sistema)
 - ✅ Un `MutationObserver` re-aplica la sustitución a contenido añadido tras la carga (modales de aviso de subida/bajada de nivel), sin tocar cada punto donde se inserta un emoji
 - ✅ Ver [Emojis (Twemoji auto-alojado)](#emojis-twemoji-auto-alojado) para cómo añadir el SVG de un emoji nuevo
+
+**Técnica — orden de "próxima práctica":**
+- ✅ Nueva columna en la tabla de `tecnica.php`/`tecnica.ejs` con la posición de cada ejercicio activo en la cola de la próxima sesión; tabla ordenada por esa columna por defecto
+- ✅ Unificado el criterio de rotación entre ambas apps: ventana de las últimas 30 sesiones de técnica (antes la web usaba el total histórico sin ventana) con desempate por fecha de última práctica, BPM y nombre — ver sección 4
+
+**Repertorio — piezas inactivas ocultas por defecto:**
+- ✅ El checkbox "Incluir piezas desactivadas" empieza desmarcado en ambas apps; había que activarlo antes para verlas, ahora es al revés
 
 Aplicado en paralelo en la app web PHP y en `App/` (Electron).
 

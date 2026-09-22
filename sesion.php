@@ -388,21 +388,44 @@ $ejerciciosPendientes = [];
 $totalEjercicios = 0;
 $ejerciciosHechos = 0;
 if ($actividadActual && $actividadActual['tipo'] === 'tecnica_ejercicios') {
-    // Orden: primero el ejercicio con menos prácticas totales; en caso de empate, el de BPM más bajo
+    // Orden: veces practicado en las últimas 30 sesiones de técnica por ejercicios
+    // (no el total histórico, para que un ejercicio muy practicado hace tiempo pero
+    // abandonado ahora vuelva a subir en la cola); empata por fecha de última
+    // práctica, BPM y nombre.
+    $stmt = $db->prepare("
+        SELECT a.sesion_id
+        FROM actividades a
+        JOIN sesiones s ON s.id = a.sesion_id
+        WHERE a.tipo = 'tecnica_ejercicios'
+        GROUP BY a.sesion_id
+        ORDER BY MAX(s.fecha) DESC, a.sesion_id DESC
+        LIMIT 30
+    ");
+    $stmt->execute();
+    $sesionesRecientes = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    $sesionesIn = $sesionesRecientes ? implode(',', $sesionesRecientes) : '0';
+
     $stmt = $db->prepare("
         SELECT et.*,
-               COALESCE(cuenta.veces, 0) AS veces_total
+               COALESCE(reciente.veces, 0) AS veces_recientes
         FROM ejercicios_tecnica et
         LEFT JOIN (
-            SELECT ejercicio_id, COUNT(*) AS veces
+            SELECT ste.ejercicio_id, COUNT(*) AS veces
+            FROM sesion_tecnica_ejercicios ste
+            JOIN actividades a ON a.id = ste.actividad_id
+            WHERE a.sesion_id IN ($sesionesIn)
+            GROUP BY ste.ejercicio_id
+        ) reciente ON reciente.ejercicio_id = et.id
+        LEFT JOIN (
+            SELECT ejercicio_id, MAX(fecha) AS fecha
             FROM sesion_tecnica_ejercicios
             GROUP BY ejercicio_id
-        ) cuenta ON cuenta.ejercicio_id = et.id
+        ) ultima ON ultima.ejercicio_id = et.id
         WHERE et.activo = 1
           AND et.id NOT IN (
               SELECT ejercicio_id FROM sesion_tecnica_ejercicios WHERE actividad_id = :act_id
           )
-        ORDER BY veces_total ASC, et.bpm ASC, et.nombre ASC
+        ORDER BY veces_recientes ASC, ultima.fecha ASC, et.bpm ASC, et.nombre ASC
     ");
     $stmt->execute([':act_id' => $actividadActual['id']]);
     $ejerciciosPendientes = $stmt->fetchAll();

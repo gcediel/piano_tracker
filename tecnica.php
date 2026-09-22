@@ -119,6 +119,50 @@ $stmt = $db->query("
 ");
 $ejercicios = $stmt->fetchAll();
 
+// Orden de "próxima práctica": mismo criterio que la cola de una sesión de
+// técnica por ejercicios (ver sesion.php) — veces practicado en las últimas 30
+// sesiones de técnica por ejercicios (no el total histórico, para que un
+// ejercicio muy practicado hace tiempo pero abandonado ahora vuelva a la cola),
+// empatando por fecha de última práctica, BPM y nombre.
+$stmt = $db->prepare("
+    SELECT a.sesion_id
+    FROM actividades a
+    JOIN sesiones s ON s.id = a.sesion_id
+    WHERE a.tipo = 'tecnica_ejercicios'
+    GROUP BY a.sesion_id
+    ORDER BY MAX(s.fecha) DESC, a.sesion_id DESC
+    LIMIT 30
+");
+$stmt->execute();
+$sesionesRecientes = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+$sesionesIn = $sesionesRecientes ? implode(',', $sesionesRecientes) : '0';
+
+$stmt = $db->prepare("
+    SELECT et.id,
+           COALESCE(reciente.veces, 0) AS veces_recientes,
+           ultima.fecha AS ultima_fecha
+    FROM ejercicios_tecnica et
+    LEFT JOIN (
+        SELECT ste.ejercicio_id, COUNT(*) AS veces
+        FROM sesion_tecnica_ejercicios ste
+        JOIN actividades a ON a.id = ste.actividad_id
+        WHERE a.sesion_id IN ($sesionesIn)
+        GROUP BY ste.ejercicio_id
+    ) reciente ON reciente.ejercicio_id = et.id
+    LEFT JOIN (
+        SELECT ejercicio_id, MAX(fecha) AS fecha
+        FROM sesion_tecnica_ejercicios
+        GROUP BY ejercicio_id
+    ) ultima ON ultima.ejercicio_id = et.id
+    WHERE et.activo = 1
+    ORDER BY veces_recientes ASC, ultima_fecha ASC, et.bpm ASC, et.nombre ASC
+");
+$stmt->execute();
+$ordenProximaPractica = [];
+foreach ($stmt->fetchAll() as $i => $r) {
+    $ordenProximaPractica[$r['id']] = $i + 1;
+}
+
 include 'includes/header.php';
 ?>
 
@@ -183,6 +227,7 @@ include 'includes/header.php';
         <thead>
             <tr>
                 <th>Nombre</th>
+                <th title="Orden en el que se elegirán en la próxima sesión de técnica por ejercicios">Próx. práctica</th>
                 <th>BPM</th>
                 <th>Prácticas</th>
                 <th>Comentarios</th>
@@ -194,6 +239,9 @@ include 'includes/header.php';
             <?php foreach ($ejercicios as $ej): ?>
             <tr style="opacity: <?php echo $ej['activo'] ? '1' : '0.5'; ?>;">
                 <td><?php echo htmlspecialchars($ej['nombre']); ?></td>
+                <td data-order="<?php echo $ordenProximaPractica[$ej['id']] ?? 9999; ?>" style="text-align:center;">
+                    <?php echo $ej['activo'] ? $ordenProximaPractica[$ej['id']] : '—'; ?>
+                </td>
                 <td data-order="<?php echo $ej['bpm']; ?>" style="text-align:center;"><strong>♩ = <?php echo $ej['bpm']; ?></strong></td>
                 <td style="text-align:center;"><?php echo $ej['num_reproducciones']; ?></td>
                 <td style="font-size:0.85rem; color:#666;"><?php echo htmlspecialchars($ej['comentarios'] ?? ''); ?></td>
@@ -244,7 +292,7 @@ $(document).ready(function() {
             "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json"
         },
         "pageLength": 25,
-        "order": [[1, "asc"]],
+        "order": [[1, "asc"]], // columna "Próx. práctica"
         "columnDefs": [
             { "orderable": false, "targets": -1 }
         ]

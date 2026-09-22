@@ -334,7 +334,7 @@ include 'includes/header.php';
 
     <div style="margin-bottom: 1rem;">
         <label style="cursor: pointer;">
-            <input type="checkbox" id="chkIncluirInactivas" checked onchange="toggleInactivas()"> Incluir piezas desactivadas
+            <input type="checkbox" id="chkIncluirInactivas" onchange="toggleInactivas()"> Incluir piezas desactivadas
         </label>
     </div>
 
@@ -498,7 +498,7 @@ include 'includes/header.php';
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
 <script>
-let incluirInactivas = true;
+let incluirInactivas = false;
 
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData, counter) {
     if (settings.nTable.id !== 'tablaPiezas') return true;

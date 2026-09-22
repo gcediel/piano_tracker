@@ -45,12 +45,15 @@
   <div style="overflow-x:auto;">
   <table id="tablaEjercicios" class="display" style="width:100%">
     <thead>
-      <tr><th>Nombre</th><th>BPM actual</th><th>Prácticas</th><th>Comentarios</th><th>Estado</th><th>Acciones</th></tr>
+      <tr><th>Nombre</th><th title="Orden en el que se elegirán en la próxima sesión de técnica por ejercicios">Próx. práctica</th><th>BPM actual</th><th>Prácticas</th><th>Comentarios</th><th>Estado</th><th>Acciones</th></tr>
     </thead>
     <tbody>
     <% ejercicios.forEach(ej => { %>
       <tr style="opacity:<%= ej.activo ? '1' : '0.5' %>;">
         <td><%= ej.nombre %></td>
+        <td data-order="<%= ordenProximaPractica[ej.id] || 9999 %>" style="text-align:center;">
+          <%= ej.activo ? ordenProximaPractica[ej.id] : '—' %>
+        </td>
         <td data-order="<%= ej.bpm %>" style="text-align:center;"><strong>♩ = <%= ej.bpm %></strong></td>
         <td style="text-align:center;"><%= ej.num_reproducciones %></td>
         <td style="font-size:0.85rem;color:var(--gray);"><%= ej.comentarios || '' %></td>
@@ -98,7 +101,7 @@ $(document).ready(function() {
     $('#tablaEjercicios').DataTable({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
       pageLength: 25,
-      order: [[1, 'asc']],
+      order: [[1, 'asc']], // columna "Próx. práctica"
       columnDefs: [ { orderable: false, targets: -1 } ]
     });
   }

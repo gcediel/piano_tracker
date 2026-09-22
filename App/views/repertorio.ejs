@@ -62,7 +62,7 @@
 <% if (piezasInactivas && piezasInactivas.length) { %>
 <div style="margin:0.5rem 0;">
   <label style="cursor:pointer;">
-    <input type="checkbox" id="chkIncluirInactivas" checked onchange="toggleInactivas()"> Incluir piezas desactivadas (<%= piezasInactivas.length %>)
+    <input type="checkbox" id="chkIncluirInactivas" onchange="toggleInactivas()"> Incluir piezas desactivadas (<%= piezasInactivas.length %>)
   </label>
 </div>
 <% } %>
@@ -124,7 +124,7 @@
 </div>
 
 <% if (piezasInactivas && piezasInactivas.length) { %>
-<div class="card" id="cardInactivas">
+<div class="card" id="cardInactivas" style="display:none;">
   <h2>Repertorio inactivo (<%= piezasInactivas.length %>)</h2>
   <table id="tablaInactivas" class="display" style="width:100%">
     <thead><tr><th>Compositor</th><th>Título</th><th>Tono</th><th>Acciones</th></tr></thead>

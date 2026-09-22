@@ -130,6 +130,7 @@ Abrir el navegador en `https://tu-servidor/` o `http://localhost/piano`
 - El **Tono MIDI** (0–127, General MIDI) determina el sonido que se activará en el piano durante la práctica de repertorio
 - El **Tempo objetivo** es el tempo al que la pieza se gradúa a "mantenimiento" (ver más abajo)
 - La **Ponderación** determina la frecuencia de práctica (1.25 = 25% más frecuente)
+- Las piezas desactivadas están ocultas por defecto; marca "Incluir piezas desactivadas" para verlas
 
 ### 2. Mantenimiento automático de repertorio
 - Cada mes, si la media de fallos con metrónomo de una pieza fue ≤ 1 y aún no llegó al tempo objetivo, el dashboard propone subir el tempo (+5 BPM) — se confirma o descarta con un clic
@@ -139,7 +140,8 @@ Abrir el navegador en `https://tu-servidor/` o `http://localhost/piano`
 
 ### 3. Técnica por ejercicios
 - Ve a **Técnica** para dar de alta ejercicios (nombre, BPM inicial, comentarios)
-- En una sesión, la actividad de tipo "Técnica (ejercicios)" rota por los ejercicios menos practicados y sube o baja el BPM según valores Bien/Neutro/Mal tras cada intento
+- La tabla muestra la columna **"Próx. práctica"** con el orden en que se elegirá cada ejercicio activo en la próxima sesión (menos practicado en las últimas 30 sesiones, empatando por fecha de última práctica y BPM)
+- En una sesión, la actividad de tipo "Técnica (ejercicios)" rota siguiendo ese mismo orden y sube o baja el BPM según valores Bien/Neutro/Mal tras cada intento
 - Tras varios "Mal" seguidos en el mismo ejercicio, rota automáticamente al siguiente
 - Desde **Admin** se puede resetear el BPM de todos los ejercicios a la vez
 
