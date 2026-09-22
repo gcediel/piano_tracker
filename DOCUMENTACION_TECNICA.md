@@ -1,10 +1,10 @@
-# Piano Tracker - Documentación Técnica v1.9
+# Piano Tracker - Documentación Técnica v1.10
 
 **Aplicación web (+ app de escritorio Electron) para gestión de práctica de piano**  
 **Autor:** Guillermo  
 **Fecha de creación:** Enero 2025  
-**Última actualización:** Agosto 2026  
-**Versión:** 1.9  
+**Última actualización:** Septiembre 2026  
+**Versión:** 1.10  
 **Stack:** PHP 8.x + MySQL 8.x / MariaDB + Vanilla JavaScript, con una segunda implementación en Node/Express/EJS (Electron) en `App/` que comparte la misma base de datos
 
 ---
@@ -160,8 +160,11 @@ piano_tracker/
 ├── assets/
 │   ├── css/
 │   │   └── style.css            # Estilos globales (incluye metrónomo)
-│   └── js/
-│       └── app.js               # JS auxiliar
+│   ├── js/
+│   │   ├── app.js               # JS auxiliar
+│   │   ├── twemoji.min.js       # Librería Twemoji vendorizada (auto-alojada, sin CDN)
+│   │   └── emoji-render.js      # Sustituye emojis del DOM por <img> locales (ver Guía de Desarrollo)
+│   └── emoji/                   # SVG de Twemoji usados por la app + ATTRIBUTION.txt (licencia CC-BY 4.0)
 ├── database/
 │   └── schema.sql               # Esquema BASE de la BD (v1.x; las migraciones lo completan)
 ├── App/                         # App de escritorio Electron/Node — ver sección 7
@@ -173,13 +176,15 @@ piano_tracker/
 │   │   ├── helpers.js           # Puerto Node de includes/funciones.php
 │   │   └── routes/               # Un router por página (dashboard, sesion, repertorio, tecnica, roland…)
 │   ├── views/                    # Plantillas EJS (equivalentes a los .php)
-│   └── assets/js/                # tone-picker.js, roland_tones.js, midi-roland.js, roland-presets.js
+│   └── assets/                   # tone-picker.js, roland_tones.js, midi-roland.js, roland-presets.js,
+│                                  # twemoji.min.js + emoji-render.js + emoji/ (copia idéntica a la de la web)
 ├── index.php                    # Dashboard
 ├── repertorio.php               # Gestión de piezas + tono MIDI GM + mantenimiento
 ├── sesion.php                   # Sesiones, timer, metrónomo, MIDI
 ├── tecnica.php                  # CRUD de ejercicios de técnica
 ├── midi.php                     # Control MIDI del piano (instrumento, efectos, metrónomo)
 ├── informes.php / informe_mensual.php / informe_anual.php   # Estadísticas
+├── resumen_semanal.php          # Pantalla previa a la primera sesión de cada semana
 ├── admin.php                    # Administración + config metrónomo + reseteo masivo BPM técnica
 ├── gestionar_sesiones.php       # CRUD de sesiones manuales
 ├── login.php / logout.php       # Autenticación
@@ -571,6 +576,29 @@ npm start                                        # arranca Electron (o: npm run 
 
 ---
 
+### 9. Informes (`informes.php`, `informe_mensual.php`, `informe_anual.php`, `resumen_semanal.php`)
+
+- **`informes.php`:** filtros de periodo (mes específico / rango) y accesos a los informes detallados.
+- **`informe_mensual.php` / `informe_anual.php`:** tablas con DataTables y gráficos (tiempo por actividad, media de fallos por pieza y mes). El informe anual añade una fila **"🏅 PUNTUACIÓN TOTAL"** al final de la tabla de piezas — ver [Puntuación de repertorio](#91-puntuación-de-repertorio).
+- **`resumen_semanal.php`:** pantalla previa a la primera sesión de cada semana natural (lun-dom); se marca como mostrada en `configuracion` (clave `resumen_semanal_mostrado_yearweek`) para no repetirla en cada sesión de la misma semana, aunque también es accesible libremente desde el dashboard sin marcar nada. Compara la semana pasada con la semana previa a esa:
+  - Tiempo y días practicados, con variación porcentual
+  - **Puntuación de repertorio** (ver 9.1), con la diferencia respecto a la semana anterior
+  - Pieza destacada de la semana (mayor caída de fallos) y tabla de piezas con mejora
+  - Piezas nuevas en el repertorio esa semana
+  - Avisos de progresión pendientes (subida de tempo, graduación a mantenimiento)
+  - Resumen de técnica (ejercicios trabajados, BPM medio)
+  - **No muestra racha de días:** ya está en el dashboard (`index.php`); mostrarla aquí también era redundante
+
+#### 9.1 Puntuación de repertorio
+
+Métrica de progreso agregada, pensada para complementar (no sustituir) la media de fallos por pieza. Fórmula: para cada pieza con al menos **5 días practicados** en la ventana considerada, se suma `10 − media de fallos/día`; las piezas con menos práctica en esa ventana no cuentan (para que una sesión aislada no decida la puntuación de una pieza, ni sume la pieza con datos insuficientes). Deliberadamente no cuenta el progreso en técnica: se considera que el repertorio es la derivada del trabajo de técnica.
+
+La ventana difiere según el informe:
+- **Resumen semanal:** 30 días rodantes a cierre de cada semana — `puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5)` (`includes/funciones.php`) / `puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5)` (`App/server/helpers.js`). `obtenerResumenSemanal()` la llama dos veces (cierre de la semana pasada y cierre de la semana previa a esa) para poder mostrar la diferencia.
+- **Informe anual:** mes natural, una puntuación por mes. No reutiliza la función anterior (su ventana no es rodante): repite el mismo umbral (`$dias >= 5`) directamente en `informe_anual.php` / `App/server/routes/informe_anual.js`, a partir de los mismos datos ya agrupados por mes que usa la tabla de piezas.
+
+---
+
 ## 🧮 Algoritmos Clave
 
 Todos definidos en `includes/funciones.php` (puerto equivalente en `App/server/helpers.js`).
@@ -757,6 +785,16 @@ Cualquier cambio de comportamiento o de esquema de BD hecho en la app PHP debe r
 
 DataTables, jQuery y Chart.js se cargan por CDN inline en cada página que los usa (no hay bundler). Al añadir una página nueva con tablas o gráficos, replicar el patrón `<script src="https://cdn...">` ya usado en `repertorio.php`/`tecnica.php`/`informes.php`.
 
+### Emojis (Twemoji auto-alojado)
+
+Los emojis no dependen de que el sistema operativo tenga una fuente de emoji instalada (en Linux suele faltar, y sin ella los emojis se ven como un cuadrado vacío/"tofu" en cualquier navegador). En su lugar, `footer.php`/`footer.ejs` cargan `assets/js/twemoji.min.js` + `assets/js/emoji-render.js` (`App/assets/js/` en Electron) al final de cada página: `emoji-render.js` sustituye cada emoji del DOM por un `<img class="emoji">` apuntando a un SVG local en `assets/emoji/` (Twemoji, licencia CC-BY 4.0 — ver `assets/emoji/ATTRIBUTION.txt`), y se re-aplica solo a contenido añadido después de cargar la página (modales, avisos) mediante un `MutationObserver`, sin necesidad de llamarlo a mano en cada sitio que inserta un emoji.
+
+**Al usar un emoji nuevo:** su SVG debe existir en `assets/emoji/<codepoint-hex>.svg` (y en `App/assets/emoji/`, copia idéntica) o se verá como imagen rota. El nombre es el codepoint Unicode en hexadecimal minúsculas (p. ej. 🎯 = U+1F3AF → `1f3af.svg`; emojis compuestos por varios codepoints van separados por guion). Descargar de:
+```bash
+curl -o assets/emoji/1f3af.svg https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3af.svg
+cp assets/emoji/1f3af.svg App/assets/emoji/
+```
+
 ---
 
 ## 🔒 Seguridad
@@ -788,6 +826,25 @@ DataTables, jQuery y Chart.js se cargan por CDN inline en cada página que los u
 ---
 
 ## 📝 Changelog
+
+### v1.10 — Septiembre 2026
+
+**Puntuación de repertorio (nueva métrica):**
+- ✅ Nueva función `puntuacionTotalEnFecha()` (`includes/funciones.php` / `App/server/helpers.js`): suma, por pieza con al menos 5 días practicados en la ventana, `10 − media de fallos/día`
+- ✅ Resumen semanal (`resumen_semanal.php`): tercer panel con la puntuación total y la diferencia respecto a la semana anterior (ventana de 30 días rodantes a cierre de cada semana)
+- ✅ Informe anual (`informe_anual.php`): fila "🏅 PUNTUACIÓN TOTAL" al final de la tabla de piezas, una por mes natural (mismo umbral de 5 días, aplicado al mes en vez de a una ventana rodante)
+- ✅ Deliberadamente no cuenta el progreso en técnica: se considera que el repertorio es la derivada del trabajo de técnica
+
+**Resumen semanal — limpieza de la cabecera:**
+- ✅ Quitada la racha de días actual (ya se muestra en el dashboard; era redundante mostrarla también aquí) — sustituida en su sitio por la puntuación de repertorio
+- ✅ Encabezado y fecha fusionados en una sola línea: "📅 Resumen de la semana del DD/MM al DD/MM" (antes: título fijo + fecha centrada debajo)
+
+**Renderizado de emojis (Twemoji auto-alojado):**
+- ✅ Corregido que los emojis se vieran como un cuadrado vacío ("tofu") en sistemas sin fuente de emoji instalada (típico en Linux): `assets/js/twemoji.min.js` + `assets/js/emoji-render.js` (nuevo) sustituyen cada emoji del DOM por un `<img>` a un SVG local en `assets/emoji/` (48 SVG de Twemoji, licencia CC-BY 4.0, sin depender de ningún CDN externo ni de la fuente del sistema)
+- ✅ Un `MutationObserver` re-aplica la sustitución a contenido añadido tras la carga (modales de aviso de subida/bajada de nivel), sin tocar cada punto donde se inserta un emoji
+- ✅ Ver [Emojis (Twemoji auto-alojado)](#emojis-twemoji-auto-alojado) para cómo añadir el SVG de un emoji nuevo
+
+Aplicado en paralelo en la app web PHP y en `App/` (Electron).
 
 ### v1.9 — Agosto 2026
 

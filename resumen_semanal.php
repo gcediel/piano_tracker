@@ -35,10 +35,7 @@ include 'includes/header.php';
 ?>
 
 <div class="card">
-    <h2>📅 Resumen de la semana pasada</h2>
-    <p style="color: var(--dark); opacity: 0.7; margin-top: -0.5rem;">
-        <?php echo date('d/m', strtotime($resumen['inicio'])) . ' – ' . date('d/m', strtotime($resumen['fin'] . ' -1 day')); ?>
-    </p>
+    <h2>📅 Resumen de la semana del <?php echo date('d/m', strtotime($resumen['inicio'])) . ' al ' . date('d/m', strtotime($resumen['fin'] . ' -1 day')); ?></h2>
 
     <?php if ($resumen['tiempo']['dias'] === 0): ?>
         <p>No hubo ninguna sesión registrada la semana pasada. ¡Esta es una buena semana para retomarlo!</p>
@@ -55,18 +52,7 @@ include 'includes/header.php';
             <?php echo compararTexto($resumen['tiempo']['dias'], $resumen['tiempo_previo']['dias']); ?>
         </div>
         <div class="stat-box">
-            <h3>🔥 <?php echo $resumen['racha_actual']; ?></h3>
-            <p>Racha actual (días)</p>
-        </div>
-    </div>
-    <?php endif; ?>
-</div>
-
-<div class="card">
-    <h2>🏅 Puntuación de repertorio</h2>
-    <div class="stats-grid">
-        <div class="stat-box">
-            <h3><?php echo number_format($resumen['puntuacion']['total'], 1); ?></h3>
+            <h3>🏅 <?php echo number_format($resumen['puntuacion']['total'], 1); ?></h3>
             <p><?php echo $resumen['puntuacion']['piezas']; ?> piezas puntuadas</p>
             <?php
             $diff = $resumen['puntuacion_diff'];
@@ -81,9 +67,7 @@ include 'includes/header.php';
             ?>
         </div>
     </div>
-    <p style="color: var(--dark); opacity: 0.7; font-size: 0.85rem;">
-        Suma de (10 − media de fallos/día en los últimos 30 días) de las piezas con al menos 3 días practicados en esa ventana.
-    </p>
+    <?php endif; ?>
 </div>
 
 <?php if ($resumen['semana_floja']): ?>

@@ -175,14 +175,14 @@ foreach ($datosPiezas as $dato) {
 // Puntuación total del repertorio por mes: mismo criterio que en el resumen
 // semanal (ver puntuacionTotalEnFecha en includes/funciones.php), pero con
 // ventana de calendario mensual en vez de rodante de 30 días. Suma, por mes,
-// (10 - media de fallos) de las piezas con al menos 3 días practicados ese mes.
+// (10 - media de fallos) de las piezas con al menos 5 días practicados ese mes.
 $puntuacionPorMes = array_fill(1, 12, 0);
 $piezasPuntuadasPorMes = array_fill(1, 12, 0);
 foreach ($piezas as $pieza) {
     foreach ($todosMeses as $mes) {
         $dias = $pieza['dias_por_mes'][$mes];
         $media = $pieza['medias_por_mes'][$mes];
-        if ($dias >= 3 && $media !== null) {
+        if ($dias >= 5 && $media !== null) {
             $puntuacionPorMes[$mes] += 10 - $media;
             $piezasPuntuadasPorMes[$mes]++;
         }
@@ -648,7 +648,7 @@ include 'includes/header.php';
             <strong>Celdas mensuales:</strong> Media de fallos/día en ese mes.
         </div>
         <div style="margin-top: 0.75rem;">
-            <strong>Fila de puntuación total:</strong> suma de (10 − media de fallos) de las piezas con al menos 3 días practicados ese mes; las piezas con menos práctica ese mes no cuentan.
+            <strong>Fila de puntuación total:</strong> suma de (10 − media de fallos) de las piezas con al menos 5 días practicados ese mes; las piezas con menos práctica ese mes no cuentan.
         </div>
     </div>
 </div>

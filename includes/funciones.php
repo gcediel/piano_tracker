@@ -416,7 +416,7 @@ function mediaFallosRango($db, $piezaId, $inicio, $finExclusivo) {
 // Excluye piezas con menos práctica en la ventana, para que una sesión aislada
 // no decida la puntuación de la pieza. Usado en el resumen semanal y, con
 // ventana mensual en vez de rodante, en el informe anual.
-function puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 3) {
+function puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5) {
     $fechaInicio = date('Y-m-d', strtotime($fechaReferencia . ' -30 days'));
     $stmt = $db->prepare("
         SELECT DISTINCT p.id
@@ -457,13 +457,9 @@ function obtenerResumenSemanal($db) {
 
     // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
     // cada semana, para poder mostrar la diferencia semana contra semana.
-    $r['puntuacion'] = puntuacionTotalEnFecha($db, $inicioSemanaActual, 3);
-    $r['puntuacion_previa'] = puntuacionTotalEnFecha($db, $inicioSemanaPasada, 3);
+    $r['puntuacion'] = puntuacionTotalEnFecha($db, $inicioSemanaActual, 5);
+    $r['puntuacion_previa'] = puntuacionTotalEnFecha($db, $inicioSemanaPasada, 5);
     $r['puntuacion_diff'] = round($r['puntuacion']['total'] - $r['puntuacion_previa']['total'], 1);
-
-    $rachas = calcularRachas($db);
-    $r['racha_actual'] = $rachas['actual'];
-    $r['racha_mas_larga'] = $rachas['mas_larga'];
 
     // Piezas trabajadas la semana pasada, con su media de fallos y comparación
     // con la semana previa (solo cuenta como "mejora" si hay datos en ambas semanas).

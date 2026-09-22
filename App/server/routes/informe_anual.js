@@ -118,14 +118,14 @@ router.get('/', async (req, res) => {
     // Puntuación total del repertorio por mes: mismo criterio que en el resumen
     // semanal (ver puntuacionTotalEnFecha en helpers.js), pero con ventana de
     // calendario mensual en vez de rodante de 30 días. Suma, por mes, (10 - media
-    // de fallos) de las piezas con al menos 3 días practicados ese mes.
+    // de fallos) de las piezas con al menos 5 días practicados ese mes.
     const puntuacionPorMes = Object.fromEntries(todosMeses.map(m => [m, 0]));
     const piezasPuntuadasPorMes = Object.fromEntries(todosMeses.map(m => [m, 0]));
     piezas.forEach(p => {
       todosMeses.forEach(m => {
         const dias = p.dias_por_mes[m];
         const media = p.medias_por_mes[m];
-        if (dias >= 3 && media !== null) {
+        if (dias >= 5 && media !== null) {
           puntuacionPorMes[m] += 10 - media;
           piezasPuntuadasPorMes[m]++;
         }

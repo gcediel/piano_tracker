@@ -15,6 +15,8 @@ Hay dos implementaciones que comparten la misma base de datos: esta app web PHP 
 ✅ **Algoritmo de selección inteligente**: Sugiere automáticamente qué pieza del repertorio practicar, con decaimiento exponencial de los fallos (con metrónomo) en vez de un corte binario a 30 días
 ✅ **Registro de fallos**: Contabiliza errores por pieza durante la práctica, distinguiendo pasada libre y pasada con metrónomo; avisa con un popup si el nivel de la pieza sube o baja
 ✅ **Informes detallados**: Estadísticas por día, semana, mes y año con tablas de tiempo y fallos
+✅ **Puntuación de repertorio**: métrica agregada (10 − media de fallos, sumada por pieza con al menos 5 días de práctica) en el resumen semanal y por mes en el informe anual, para ver el progreso de un vistazo
+✅ **Resumen semanal**: pantalla previa a la primera sesión de cada semana con tiempo/días practicados, puntuación y su variación, piezas destacadas, piezas nuevas y avisos de progresión pendientes
 ✅ **Interfaz responsive**: Diseño optimizado para desktop, móvil y tablet
 
 ## Instalación
@@ -184,6 +186,8 @@ Abrir el navegador en `https://tu-servidor/` o `http://localhost/piano`
 ### 9. Ver informes
 - Ve a **Informes** → selecciona el periodo
 - Estadísticas de tiempo por actividad y fallos por pieza con gráficos
+- El informe anual incluye una fila de **puntuación total por mes** al final de la tabla de piezas
+- Antes de la primera sesión de cada semana se muestra el **resumen semanal**, con la puntuación de repertorio y su variación respecto a la semana anterior (también accesible libremente desde el dashboard)
 
 ### 10. App de escritorio (Electron, opcional)
 - En `App/` hay una versión de escritorio (Electron/Node) que comparte la misma base de datos y añade control MIDI nativo y una página `/roland` para controlar en vivo un sintetizador **Roland GO:KEYS** (tonos propios, presets, mezcla). Ver `DOCUMENTACION_TECNICA.md` para instalación y detalle.
@@ -223,8 +227,10 @@ piano_tracker/
 ├── assets/
 │   ├── css/
 │   │   └── style.css          # Estilos globales
-│   └── js/
-│       └── app.js             # JavaScript auxiliar
+│   ├── js/
+│   │   ├── app.js             # JavaScript auxiliar
+│   │   └── twemoji.min.js / emoji-render.js   # Emojis auto-alojados (ver DOCUMENTACION_TECNICA.md)
+│   └── emoji/                 # SVG de Twemoji usados por la app
 ├── database/
 │   └── schema.sql             # Esquema BASE de la BD (las migraciones lo completan)
 ├── App/                        # App de escritorio Electron/Node (misma BD) — ver DOCUMENTACION_TECNICA.md
@@ -234,6 +240,7 @@ piano_tracker/
 ├── tecnica.php                # CRUD de ejercicios de técnica
 ├── midi.php                   # Control MIDI del piano (instrumento, efectos, metrónomo)
 ├── informes.php               # Estadísticas e informes
+├── resumen_semanal.php        # Pantalla previa a la primera sesión de cada semana
 ├── admin.php                  # Panel de administración
 ├── gestionar_sesiones.php     # CRUD de sesiones manuales
 ├── generar_hash.php           # Genera el hash de la contraseña de login (recibe la contraseña por CLI)
@@ -269,6 +276,6 @@ sudo systemctl restart mysql
 
 ---
 
-**Versión**: 1.9  
-**Última actualización**: Agosto 2026  
+**Versión**: 1.10  
+**Última actualización**: Septiembre 2026  
 **Licencia**: Uso personal

@@ -1,10 +1,8 @@
 <%- include('partials/header') %>
 
 <div class="card">
-  <h2>📅 Resumen de la semana pasada</h2>
-  <p style="color:var(--gray);margin-top:-0.5rem;">
-    <%= h.formatDate(resumen.inicio) %> – <%= h.formatDate(resumen.fin) %>
-  </p>
+  <% const diaMes = (s) => { const [, m, d] = s.split('-'); return `${d}/${m}`; }; %>
+  <h2>📅 Resumen de la semana del <%= diaMes(resumen.inicio) %> al <%= diaMes(resumen.fin) %></h2>
 
   <% if (resumen.tiempo.dias === 0) { %>
     <p>No hubo ninguna sesión registrada la semana pasada. ¡Esta es una buena semana para retomarlo!</p>
@@ -21,18 +19,7 @@
       <%- h.compararTexto(resumen.tiempo.dias, resumen.tiempoPrevio.dias) %>
     </div>
     <div class="stat-box">
-      <h3>🔥 <%= resumen.rachas.actual %></h3>
-      <p>Racha actual (días)</p>
-    </div>
-  </div>
-  <% } %>
-</div>
-
-<div class="card">
-  <h2>🏅 Puntuación de repertorio</h2>
-  <div class="stats-grid">
-    <div class="stat-box">
-      <h3><%= resumen.puntuacion.total.toFixed(1) %></h3>
+      <h3>🏅 <%= resumen.puntuacion.total.toFixed(1) %></h3>
       <p><%= resumen.puntuacion.piezas %> piezas puntuadas</p>
       <% if (resumen.puntuacionPrevia.piezas === 0) { %>
         <small style="opacity:0.7;">(sin datos suficientes la semana pasada)</small>
@@ -43,9 +30,7 @@
       <% } %>
     </div>
   </div>
-  <p style="color:var(--gray);font-size:0.85rem;">
-    Suma de (10 − media de fallos/día en los últimos 30 días) de las piezas con al menos 3 días practicados en esa ventana.
-  </p>
+  <% } %>
 </div>
 
 <% if (resumen.semanaFloja) { %>

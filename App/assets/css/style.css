@@ -552,3 +552,12 @@ tbody tr:hover { background: #f8fbff; }
   .metro-controls-row { gap: 1rem; }
   header nav .container { flex-direction: column; align-items: flex-start; }
 }
+
+/* Emojis renderizados como imagen local (Twemoji, ver assets/js/emoji-render.js):
+   evita que se vean como un cuadrado vacío en sistemas sin fuente de emoji. */
+img.emoji {
+  height: 1em;
+  width: 1em;
+  margin: 0 0.05em 0 0.1em;
+  vertical-align: -0.1em;
+}

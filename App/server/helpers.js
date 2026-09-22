@@ -464,7 +464,7 @@ function compararTexto(actual, previo) {
 // Excluye piezas con menos práctica en la ventana, para que una sesión aislada
 // no decida la puntuación de la pieza. Usado en el resumen semanal y, con
 // ventana mensual en vez de rodante, en el informe anual.
-async function puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 3) {
+async function puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5) {
   const inicio = new Date(fechaReferencia + 'T00:00:00Z');
   inicio.setUTCDate(inicio.getUTCDate() - 30);
   const fechaInicio = inicio.toISOString().split('T')[0];
@@ -499,11 +499,9 @@ async function obtenerResumenSemanal(pool) {
 
   // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
   // cada semana, para poder mostrar la diferencia semana contra semana.
-  const puntuacion = await puntuacionTotalEnFecha(pool, pasada.endExclusive, 3);
-  const puntuacionPrevia = await puntuacionTotalEnFecha(pool, previa.endExclusive, 3);
+  const puntuacion = await puntuacionTotalEnFecha(pool, pasada.endExclusive, 5);
+  const puntuacionPrevia = await puntuacionTotalEnFecha(pool, previa.endExclusive, 5);
   const puntuacionDiff = Math.round((puntuacion.total - puntuacionPrevia.total) * 10) / 10;
-
-  const rachas = await calcularRachas(pool);
 
   const [piezasTrabajadas] = await pool.execute(`
     SELECT DISTINCT p.id, p.compositor, p.titulo
@@ -570,7 +568,7 @@ async function obtenerResumenSemanal(pool) {
 
   return {
     inicio: pasada.start, fin: pasada.end,
-    tiempo, tiempoPrevio, rachas,
+    tiempo, tiempoPrevio,
     puntuacion, puntuacionPrevia, puntuacionDiff,
     mejoras, logroPieza: mejoras[0] || null,
     piezasNuevas, avisosProgresion, tecnica, semanaFloja,
