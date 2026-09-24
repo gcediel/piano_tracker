@@ -175,7 +175,7 @@ include 'includes/header.php';
         <a href="sesion.php" class="btn btn-success">Nueva sesión</a>
         <a href="repertorio.php" class="btn btn-primary">Gestionar repertorio</a>
         <a href="informes.php" class="btn btn-warning">Ver informes</a>
-        <a href="resumen_semanal.php" class="btn btn-primary">📅 Resumen semanal</a>
+        <a href="resumen.php" class="btn btn-primary">📅 Resumen semanal</a>
     </div>
 </div>
 

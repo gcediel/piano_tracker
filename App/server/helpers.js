@@ -389,12 +389,8 @@ async function calcularRachas(pool) {
   return { actual, maxima };
 }
 
-// ─── Resumen semanal (pantalla previa al empezar la primera sesión de la semana) ──
-
-// Clave en `configuracion` donde se guarda la última semana (año+nº ISO, ej.
-// "202538") para la que ya se mostró el resumen, y así no repetirlo en cada
-// sesión de la semana. Se comparte con la app PHP: usan la misma base de datos.
-const CLAVE_RESUMEN_SEMANAL_MOSTRADO = 'resumen_semanal_mostrado_yearweek';
+// ─── Resúmenes de periodo (pantalla previa a la primera sesión de la semana, ──
+// ─── del mes o del año, con los datos del periodo natural anterior) ──────────
 
 // Año ISO 8601 + nº de semana ISO, igual que PHP date('oW').
 function isoYearWeek(date) {
@@ -406,19 +402,70 @@ function isoYearWeek(date) {
   return `${d.getUTCFullYear()}${String(weekNo).padStart(2, '0')}`;
 }
 
-async function debeMostrarResumenSemanal(pool) {
-  const semanaActual = isoYearWeek(new Date());
-  const [rows] = await pool.execute(`SELECT valor FROM configuracion WHERE clave = ?`, [CLAVE_RESUMEN_SEMANAL_MOSTRADO]);
-  return !rows.length || rows[0].valor !== semanaActual;
+// Por cada periodo, clave en `configuracion` donde se guarda el último periodo
+// para el que ya se mostró el resumen (así no se repite en cada sesión), y cómo
+// se identifica el periodo en curso. Se comparte con la app PHP: usan la misma
+// base de datos y el mismo formato de valor (date('oW'), date('Ym'), date('Y')).
+const RESUMEN_PERIODOS = {
+  semana: {
+    clave: 'resumen_semanal_mostrado_yearweek',
+    valor: (d) => isoYearWeek(d),
+    descripcion: 'Última semana (año+nº ISO) en que se mostró el resumen semanal',
+  },
+  mes: {
+    clave: 'resumen_mensual_mostrado_yearmonth',
+    valor: (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`,
+    descripcion: 'Último mes (año+mes) en que se mostró el resumen mensual',
+  },
+  anio: {
+    clave: 'resumen_anual_mostrado_year',
+    valor: (d) => String(d.getFullYear()),
+    descripcion: 'Último año en que se mostró el resumen anual',
+  },
+};
+const ORDEN_PERIODOS = ['semana', 'mes', 'anio'];
+
+// True si aún no se ha mostrado el resumen del periodo ('semana', 'mes', 'anio') en curso.
+// Si la clave aún no existe (instalación nueva o recién añadido ese resumen), se
+// crea con el periodo en curso sin mostrar nada: el primer resumen saldrá al
+// empezar el periodo siguiente, en vez de uno a medias o de antes de usar la app.
+async function debeMostrarResumen(pool, periodo) {
+  const cfg = RESUMEN_PERIODOS[periodo];
+  const [rows] = await pool.execute(`SELECT valor FROM configuracion WHERE clave = ?`, [cfg.clave]);
+  if (!rows.length) {
+    await guardarResumenMostrado(pool, periodo);
+    return false;
+  }
+  return rows[0].valor !== cfg.valor(new Date());
 }
 
-async function marcarResumenSemanalMostrado(pool) {
-  const semanaActual = isoYearWeek(new Date());
+async function guardarResumenMostrado(pool, periodo) {
+  const cfg = RESUMEN_PERIODOS[periodo];
+  const valor = cfg.valor(new Date());
   await pool.execute(
     `INSERT INTO configuracion (clave, valor, descripcion) VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE valor = ?`,
-    [CLAVE_RESUMEN_SEMANAL_MOSTRADO, semanaActual, 'Última semana (año+nº ISO) en que se mostró el resumen semanal', semanaActual]
+    [cfg.clave, valor, cfg.descripcion, valor]
   );
+}
+
+// Resumen que toca mostrar antes de la próxima sesión, o null si ninguno. Si
+// hay varios pendientes (p. ej. el 1 de enero), gana el de periodo más amplio,
+// que ya incluye los datos de los otros (ver marcarResumenMostrado).
+async function resumenPendiente(pool) {
+  for (const periodo of ['anio', 'mes', 'semana']) {
+    if (await debeMostrarResumen(pool, periodo)) return periodo;
+  }
+  return null;
+}
+
+// Marca el periodo en curso como ya mostrado (se llama al confirmar el resumen
+// y pasar a la sesión, no solo al visitarlo voluntariamente). También marca los
+// periodos más cortos, para no encadenar varios resúmenes seguidos.
+async function marcarResumenMostrado(pool, periodo) {
+  for (const p of ORDEN_PERIODOS.slice(0, ORDEN_PERIODOS.indexOf(periodo) + 1)) {
+    await guardarResumenMostrado(pool, p);
+  }
 }
 
 // Tiempo total practicado (segundos) y días distintos con sesión en [inicio, finInclusive]
@@ -447,22 +494,24 @@ async function mediaFallosRango(pool, piezaId, inicio, finExclusivo) {
   return { media: (parseFloat(rows[0]?.total) || 0) / dias, dias };
 }
 
-// Texto HTML breve de comparación con la semana anterior, para las stat-box.
-function compararTexto(actual, previo) {
+// Texto HTML breve de comparación con el periodo anterior, para las stat-box.
+// `textos` trae las etiquetas del periodo (ver routes/resumen.js): `anterior`
+// ("la semana anterior", "el mes anterior"...) y `vs` ("semana anterior"...).
+function compararTexto(actual, previo, textos) {
   if (!previo) {
-    return actual > 0 ? ' <small style="opacity:0.7;">(la semana anterior no hubo práctica)</small>' : '';
+    return actual > 0 ? ` <small style="opacity:0.7;">(${textos.anterior} no hubo práctica)</small>` : '';
   }
   const pct = Math.round(((actual - previo) / previo) * 100);
-  if (pct === 0) return ' <small style="opacity:0.7;">(igual que la semana anterior)</small>';
+  if (pct === 0) return ` <small style="opacity:0.7;">(igual que ${textos.anterior})</small>`;
   const signo = pct > 0 ? '+' : '';
-  return ` <small style="opacity:0.7;">(${signo}${pct}% vs. semana anterior)</small>`;
+  return ` <small style="opacity:0.7;">(${signo}${pct}% vs. ${textos.vs})</small>`;
 }
 
 // Puntuación total del repertorio en una fecha de referencia: para cada pieza
 // con al menos minDias días practicados en los 30 días anteriores a
 // fechaReferencia (exclusive), suma (10 - media de fallos/día en esa ventana).
 // Excluye piezas con menos práctica en la ventana, para que una sesión aislada
-// no decida la puntuación de la pieza. Usado en el resumen semanal y, con
+// no decida la puntuación de la pieza. Usado en los resúmenes de periodo y, con
 // ventana mensual en vez de rodante, en el informe anual.
 async function puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5) {
   const inicio = new Date(fechaReferencia + 'T00:00:00Z');
@@ -487,32 +536,67 @@ async function puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5) {
   return { total: Math.round(total * 10) / 10, piezas: piezasContadas };
 }
 
-// Construye los datos del resumen semanal: compara la semana natural (lun-dom)
-// inmediatamente anterior a la actual con la semana previa a esa, sin importar
-// qué día de la semana en curso se esté mostrando el resumen.
-async function obtenerResumenSemanal(pool) {
-  const pasada = getWeekBounds(1);
-  const previa = getWeekBounds(2);
+// Fecha local como 'YYYY-MM-DD' (sin pasar por UTC).
+function ymdLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
-  const tiempo = await tiempoYDiasEnRango(pool, pasada.start, pasada.end);
-  const tiempoPrevio = await tiempoYDiasEnRango(pool, previa.start, previa.end);
+// Límites del periodo natural anterior al actual (inicio, fin inclusivo,
+// finExclusivo) y del previo a ese (inicioPrevio), para semana, mes o año.
+function limitesResumen(periodo) {
+  const hoy = new Date();
+  let fin, inicio, inicioPrevio;
+  if (periodo === 'mes') {
+    fin = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    inicioPrevio = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
+  } else if (periodo === 'anio') {
+    fin = new Date(hoy.getFullYear(), 0, 1);
+    inicio = new Date(hoy.getFullYear() - 1, 0, 1);
+    inicioPrevio = new Date(hoy.getFullYear() - 2, 0, 1);
+  } else {
+    const dia = hoy.getDay(); // 0=Dom
+    fin = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + (dia === 0 ? -6 : 1 - dia));
+    inicio = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - 7);
+    inicioPrevio = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - 14);
+  }
+  const finInclusivo = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - 1);
+  return {
+    inicio: ymdLocal(inicio),
+    fin: ymdLocal(finInclusivo),
+    finExclusivo: ymdLocal(fin),
+    inicioPrevio: ymdLocal(inicioPrevio),
+    finPrevio: ymdLocal(new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() - 1)),
+    diasPeriodo: Math.round((fin - inicio) / 86400000),
+  };
+}
+
+// Construye los datos del resumen de un periodo ('semana', 'mes' o 'anio'):
+// compara el periodo natural (semana lun-dom, mes o año) inmediatamente
+// anterior al actual con el previo a ese, sin importar qué día del periodo en
+// curso se esté mostrando el resumen.
+async function obtenerResumenPeriodo(pool, periodo) {
+  const lim = limitesResumen(periodo);
+
+  const tiempo = await tiempoYDiasEnRango(pool, lim.inicio, lim.fin);
+  const tiempoPrevio = await tiempoYDiasEnRango(pool, lim.inicioPrevio, lim.finPrevio);
 
   // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
-  // cada semana, para poder mostrar la diferencia semana contra semana.
-  const puntuacion = await puntuacionTotalEnFecha(pool, pasada.endExclusive, 5);
-  const puntuacionPrevia = await puntuacionTotalEnFecha(pool, previa.endExclusive, 5);
+  // cada periodo, para poder mostrar la diferencia periodo contra periodo.
+  const puntuacion = await puntuacionTotalEnFecha(pool, lim.finExclusivo, 5);
+  const puntuacionPrevia = await puntuacionTotalEnFecha(pool, lim.inicio, 5);
   const puntuacionDiff = Math.round((puntuacion.total - puntuacionPrevia.total) * 10) / 10;
 
   const [piezasTrabajadas] = await pool.execute(`
     SELECT DISTINCT p.id, p.compositor, p.titulo
     FROM fallos f JOIN piezas p ON f.pieza_id = p.id
     WHERE f.fecha_registro >= ? AND f.fecha_registro < ?
-  `, [pasada.start, pasada.endExclusive]);
+  `, [lim.inicio, lim.finExclusivo]);
 
   const mejoras = [];
   for (const pieza of piezasTrabajadas) {
-    const actual = await mediaFallosRango(pool, pieza.id, pasada.start, pasada.endExclusive);
-    const anterior = await mediaFallosRango(pool, pieza.id, previa.start, previa.endExclusive);
+    const actual = await mediaFallosRango(pool, pieza.id, lim.inicio, lim.finExclusivo);
+    const anterior = await mediaFallosRango(pool, pieza.id, lim.inicioPrevio, lim.inicio);
     if (!actual || !anterior) continue;
     const delta = anterior.media - actual.media;
     if (delta > 0.1) {
@@ -525,7 +609,7 @@ async function obtenerResumenSemanal(pool) {
     SELECT id, compositor, titulo FROM piezas
     WHERE fecha_creacion >= ? AND fecha_creacion < ?
     ORDER BY fecha_creacion
-  `, [pasada.start, pasada.endExclusive]);
+  `, [lim.inicio, lim.finExclusivo]);
 
   const [avisosProgresion] = await pool.execute(`
     SELECT id, compositor, titulo, tempo, tempo_objetivo, sugerencia_tempo_pendiente, aviso_graduacion_pendiente
@@ -542,13 +626,13 @@ async function obtenerResumenSemanal(pool) {
            AVG(bpm_practicado) AS bpm_medio
     FROM sesion_tecnica_ejercicios
     WHERE fecha >= ? AND fecha < ?
-  `, [pasada.start, pasada.endExclusive]);
+  `, [lim.inicio, lim.finExclusivo]);
 
   const [[tecnicaPreviaRow]] = await pool.execute(`
     SELECT AVG(bpm_practicado) AS bpm_medio
     FROM sesion_tecnica_ejercicios
     WHERE fecha >= ? AND fecha < ?
-  `, [previa.start, previa.endExclusive]);
+  `, [lim.inicioPrevio, lim.inicio]);
 
   const tecnica = {
     total: tecnicaRow.total || 0,
@@ -559,19 +643,19 @@ async function obtenerResumenSemanal(pool) {
     bpmMedioPrevio: tecnicaPreviaRow.bpm_medio !== null ? parseFloat(tecnicaPreviaRow.bpm_medio) : null,
   };
 
-  let semanaFloja = false;
+  let periodoFlojo = false;
   if (tiempoPrevio.dias > 0) {
     const bajadaTiempo = tiempo.segundos < tiempoPrevio.segundos * 0.7;
     const bajadaDias = tiempo.dias < tiempoPrevio.dias;
-    semanaFloja = bajadaTiempo || bajadaDias;
+    periodoFlojo = bajadaTiempo || bajadaDias;
   }
 
   return {
-    inicio: pasada.start, fin: pasada.end,
+    periodo, inicio: lim.inicio, fin: lim.fin, diasPeriodo: lim.diasPeriodo,
     tiempo, tiempoPrevio,
     puntuacion, puntuacionPrevia, puntuacionDiff,
     mejoras, logroPieza: mejoras[0] || null,
-    piezasNuevas, avisosProgresion, tecnica, semanaFloja,
+    piezasNuevas, avisosProgresion, tecnica, periodoFlojo,
   };
 }
 
@@ -600,7 +684,7 @@ module.exports = {
   obtenerPiezaSugerida, getColorFallos, MESES,
   resolverTonoMidi,
   mediaFallosMetronomo, evaluarProgresionMensual, revisarDemocionMantenimiento, registrarFallo,
-  calcularRachas, debeMostrarResumenSemanal, marcarResumenSemanalMostrado,
-  tiempoYDiasEnRango, mediaFallosRango, compararTexto, obtenerResumenSemanal,
+  calcularRachas, debeMostrarResumen, resumenPendiente, marcarResumenMostrado,
+  tiempoYDiasEnRango, mediaFallosRango, compararTexto, obtenerResumenPeriodo,
   puntuacionTotalEnFecha,
 };

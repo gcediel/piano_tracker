@@ -184,7 +184,7 @@ piano_tracker/
 ├── tecnica.php                  # CRUD de ejercicios de técnica
 ├── midi.php                     # Control MIDI del piano (instrumento, efectos, metrónomo)
 ├── informes.php / informe_mensual.php / informe_anual.php   # Estadísticas
-├── resumen_semanal.php          # Pantalla previa a la primera sesión de cada semana
+├── resumen.php                  # Resumen semanal/mensual/anual, previo a la primera sesión del periodo
 ├── admin.php                    # Administración + config metrónomo + reseteo masivo BPM técnica
 ├── gestionar_sesiones.php       # CRUD de sesiones manuales
 ├── login.php / logout.php       # Autenticación
@@ -579,15 +579,20 @@ npm start                                        # arranca Electron (o: npm run 
 
 ---
 
-### 9. Informes (`informes.php`, `informe_mensual.php`, `informe_anual.php`, `resumen_semanal.php`)
+### 9. Informes (`informes.php`, `informe_mensual.php`, `informe_anual.php`, `resumen.php`)
 
 - **`informes.php`:** filtros de periodo (mes específico / rango) y accesos a los informes detallados.
 - **`informe_mensual.php` / `informe_anual.php`:** tablas con DataTables y gráficos (tiempo por actividad, media de fallos por pieza y mes). El informe anual añade una fila **"🏅 PUNTUACIÓN TOTAL"** al final de la tabla de piezas — ver [Puntuación de repertorio](#91-puntuación-de-repertorio).
-- **`resumen_semanal.php`:** pantalla previa a la primera sesión de cada semana natural (lun-dom); se marca como mostrada en `configuracion` (clave `resumen_semanal_mostrado_yearweek`) para no repetirla en cada sesión de la misma semana, aunque también es accesible libremente desde el dashboard sin marcar nada. Compara la semana pasada con la semana previa a esa:
-  - Tiempo y días practicados, con variación porcentual
-  - **Puntuación de repertorio** (ver 9.1), con la diferencia respecto a la semana anterior
-  - Pieza destacada de la semana (mayor caída de fallos) y tabla de piezas con mejora
-  - Piezas nuevas en el repertorio esa semana
+- **`resumen.php?periodo=semana|mes|anio`** (`/resumen` en `App/`): pantalla previa a la primera sesión de cada semana natural (lun-dom), de cada mes y de cada año, con los datos del periodo natural anterior comparados con el previo a ese. `sesion.php` redirige aquí si `resumenPendiente()` devuelve un periodo; se marca como mostrado en `configuracion` al pulsar "Empezar a practicar", para no repetirlo en cada sesión del mismo periodo:
+  - Claves: `resumen_semanal_mostrado_yearweek` (`date('oW')`), `resumen_mensual_mostrado_yearmonth` (`date('Ym')`), `resumen_anual_mostrado_year` (`date('Y')`)
+  - Si coinciden varios (p. ej. un 1 de enero), se muestra solo el de periodo más amplio, y al confirmarlo se marcan también los más cortos (`marcarResumenMostrado()`), para no encadenar tres pantallas seguidas
+  - Si una clave no existe todavía (instalación nueva o recién añadido el resumen), `debeMostrarResumen()` la crea con el periodo en curso sin mostrar nada: el primer resumen sale al empezar el periodo siguiente
+  - El resumen semanal también es accesible libremente desde el dashboard sin marcar nada; el mensual y el anual incluyen además un botón al informe mensual/anual del periodo resumido
+  - Contenido (igual en los tres periodos, calculado por `obtenerResumenPeriodo()`):
+  - Tiempo y días practicados (sobre los días del periodo), con variación porcentual
+  - **Puntuación de repertorio** (ver 9.1), con la diferencia respecto al periodo anterior
+  - Pieza destacada del periodo (mayor caída de fallos) y tabla de piezas con mejora
+  - Piezas nuevas en el repertorio en el periodo
   - Avisos de progresión pendientes (subida de tempo, graduación a mantenimiento)
   - Resumen de técnica (ejercicios trabajados, BPM medio)
   - **No muestra racha de días:** ya está en el dashboard (`index.php`); mostrarla aquí también era redundante
@@ -597,7 +602,7 @@ npm start                                        # arranca Electron (o: npm run 
 Métrica de progreso agregada, pensada para complementar (no sustituir) la media de fallos por pieza. Fórmula: para cada pieza con al menos **5 días practicados** en la ventana considerada, se suma `10 − media de fallos/día`; las piezas con menos práctica en esa ventana no cuentan (para que una sesión aislada no decida la puntuación de una pieza, ni sume la pieza con datos insuficientes). Deliberadamente no cuenta el progreso en técnica: se considera que el repertorio es la derivada del trabajo de técnica.
 
 La ventana difiere según el informe:
-- **Resumen semanal:** 30 días rodantes a cierre de cada semana — `puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5)` (`includes/funciones.php`) / `puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5)` (`App/server/helpers.js`). `obtenerResumenSemanal()` la llama dos veces (cierre de la semana pasada y cierre de la semana previa a esa) para poder mostrar la diferencia.
+- **Resúmenes semanal, mensual y anual:** 30 días rodantes a cierre de cada periodo — `puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5)` (`includes/funciones.php`) / `puntuacionTotalEnFecha(pool, fechaReferencia, minDias = 5)` (`App/server/helpers.js`). `obtenerResumenPeriodo()` la llama dos veces (cierre del periodo pasado y cierre del previo a ese) para poder mostrar la diferencia.
 - **Informe anual:** mes natural, una puntuación por mes. No reutiliza la función anterior (su ventana no es rodante): repite el mismo umbral (`$dias >= 5`) directamente en `informe_anual.php` / `App/server/routes/informe_anual.js`, a partir de los mismos datos ya agrupados por mes que usa la tabla de piezas.
 
 ---
@@ -853,6 +858,11 @@ cp assets/emoji/1f3af.svg App/assets/emoji/
 
 **Repertorio — piezas inactivas ocultas por defecto:**
 - ✅ El checkbox "Incluir piezas desactivadas" empieza desmarcado en ambas apps; había que activarlo antes para verlas, ahora es al revés
+
+**Resúmenes mensual y anual:**
+- ✅ Además del semanal, antes de la primera sesión de cada mes y de cada año se muestra un resumen del mes/año anterior con los mismos datos, más un botón al informe mensual/anual correspondiente
+- ✅ `resumen_semanal.php` pasa a ser `resumen.php?periodo=semana|mes|anio` (`/resumen-semanal` → `/resumen` en `App/`); `obtenerResumenSemanal()` se generaliza en `obtenerResumenPeriodo()`
+- ✅ Si coinciden varios periodos se muestra solo el más amplio y se dan por vistos los demás — ver sección 9
 
 Aplicado en paralelo en la app web PHP y en `App/` (Electron).
 

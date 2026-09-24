@@ -24,7 +24,7 @@ app.use((req, res, next) => { res.locals.cssVersion = cssVersion; next(); });
 
 // ─── Rutas ────────────────────────────────────────────────────────────────────
 app.use('/',                   require('./routes/dashboard'));
-app.use('/resumen-semanal',    require('./routes/resumen_semanal'));
+app.use('/resumen',           require('./routes/resumen'));
 app.use('/sesion',             require('./routes/sesion'));
 app.use('/repertorio',         require('./routes/repertorio'));
 app.use('/tecnica',            require('./routes/tecnica'));

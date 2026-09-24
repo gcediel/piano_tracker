@@ -342,34 +342,70 @@ function calcularRachas($db, $hayActividadHoy = null) {
 }
 
 // ============================================
-// Resumen semanal (pantalla previa al empezar la primera sesión de la semana)
+// Resúmenes de periodo (pantalla previa a la primera sesión de la semana, del
+// mes o del año, con los datos del periodo natural anterior)
 // ============================================
 
-// Clave en `configuracion` donde se guarda la última semana (año+nº ISO, ej. "202538")
-// para la que ya se mostró el resumen, y así no repetirlo en cada sesión de la semana.
+// Por cada periodo, clave en `configuracion` donde se guarda el último periodo
+// para el que ya se mostró el resumen (así no se repite en cada sesión), y el
+// formato de date() que identifica el periodo en curso.
 define('CLAVE_RESUMEN_SEMANAL_MOSTRADO', 'resumen_semanal_mostrado_yearweek');
+define('CLAVE_RESUMEN_MENSUAL_MOSTRADO', 'resumen_mensual_mostrado_yearmonth');
+define('CLAVE_RESUMEN_ANUAL_MOSTRADO', 'resumen_anual_mostrado_year');
 
-// True si aún no se ha mostrado el resumen semanal para la semana ISO actual.
-function debeMostrarResumenSemanal($db) {
-    $semanaActual = date('oW');
+const RESUMEN_PERIODOS = [
+    'semana' => ['clave' => CLAVE_RESUMEN_SEMANAL_MOSTRADO, 'formato' => 'oW',
+                 'descripcion' => 'Última semana (año+nº ISO) en que se mostró el resumen semanal'],
+    'mes'    => ['clave' => CLAVE_RESUMEN_MENSUAL_MOSTRADO, 'formato' => 'Ym',
+                 'descripcion' => 'Último mes (año+mes) en que se mostró el resumen mensual'],
+    'anio'   => ['clave' => CLAVE_RESUMEN_ANUAL_MOSTRADO, 'formato' => 'Y',
+                 'descripcion' => 'Último año en que se mostró el resumen anual'],
+];
+
+// True si aún no se ha mostrado el resumen del periodo ('semana', 'mes', 'anio') en curso.
+// Si la clave aún no existe (instalación nueva o recién añadido ese resumen), se
+// crea con el periodo en curso sin mostrar nada: el primer resumen saldrá al
+// empezar el periodo siguiente, en vez de uno a medias o de antes de usar la app.
+function debeMostrarResumen($db, $periodo) {
+    $cfg = RESUMEN_PERIODOS[$periodo];
     $stmt = $db->prepare("SELECT valor FROM configuracion WHERE clave = :k");
-    $stmt->execute([':k' => CLAVE_RESUMEN_SEMANAL_MOSTRADO]);
+    $stmt->execute([':k' => $cfg['clave']]);
     $guardado = $stmt->fetchColumn();
-    return $guardado !== $semanaActual;
+    if ($guardado === false) {
+        guardarResumenMostrado($db, $periodo);
+        return false;
+    }
+    return $guardado !== date($cfg['formato']);
 }
 
-// Marca la semana ISO actual como ya mostrada (se llama al confirmar el resumen
-// y pasar a la sesión, no solo al visitarlo voluntariamente).
-function marcarResumenSemanalMostrado($db) {
-    $semanaActual = date('oW');
+function guardarResumenMostrado($db, $periodo) {
+    $cfg = RESUMEN_PERIODOS[$periodo];
+    $valor = date($cfg['formato']);
     $stmt = $db->prepare("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?, ?, ?)
                           ON DUPLICATE KEY UPDATE valor = ?");
-    $stmt->execute([
-        CLAVE_RESUMEN_SEMANAL_MOSTRADO,
-        $semanaActual,
-        'Última semana (año+nº ISO) en que se mostró el resumen semanal',
-        $semanaActual
-    ]);
+    $stmt->execute([$cfg['clave'], $valor, $cfg['descripcion'], $valor]);
+}
+
+// Resumen que toca mostrar antes de la próxima sesión, o null si ninguno. Si
+// hay varios pendientes (p. ej. el 1 de enero), gana el de periodo más amplio,
+// que ya incluye los datos de los otros (ver marcarResumenMostrado).
+function resumenPendiente($db) {
+    foreach (['anio', 'mes', 'semana'] as $periodo) {
+        if (debeMostrarResumen($db, $periodo)) {
+            return $periodo;
+        }
+    }
+    return null;
+}
+
+// Marca el periodo en curso como ya mostrado (se llama al confirmar el resumen
+// y pasar a la sesión, no solo al visitarlo voluntariamente). También marca los
+// periodos más cortos, para no encadenar varios resúmenes seguidos.
+function marcarResumenMostrado($db, $periodo) {
+    $orden = ['semana', 'mes', 'anio'];
+    foreach (array_slice($orden, 0, array_search($periodo, $orden) + 1) as $p) {
+        guardarResumenMostrado($db, $p);
+    }
 }
 
 // Tiempo total practicado (segundos) y días distintos con sesión en [$inicio, $finExclusivo).
@@ -414,7 +450,7 @@ function mediaFallosRango($db, $piezaId, $inicio, $finExclusivo) {
 // con al menos $minDias días practicados en los 30 días anteriores a
 // $fechaReferencia (exclusive), suma (10 - media de fallos/día en esa ventana).
 // Excluye piezas con menos práctica en la ventana, para que una sesión aislada
-// no decida la puntuación de la pieza. Usado en el resumen semanal y, con
+// no decida la puntuación de la pieza. Usado en los resúmenes de periodo y, con
 // ventana mensual en vez de rodante, en el informe anual.
 function puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5) {
     $fechaInicio = date('Y-m-d', strtotime($fechaReferencia . ' -30 days'));
@@ -439,43 +475,69 @@ function puntuacionTotalEnFecha($db, $fechaReferencia, $minDias = 5) {
     return ['total' => round($total, 1), 'piezas' => $piezasContadas];
 }
 
-// Construye los datos del resumen semanal: compara la semana natural (lun-dom)
-// inmediatamente anterior a la actual con la semana previa a esa, sin importar
-// qué día de la semana en curso se esté mostrando el resumen.
-function obtenerResumenSemanal($db) {
-    $inicioSemanaActual = date('Y-m-d', strtotime('monday this week'));
-    $inicioSemanaPasada = date('Y-m-d', strtotime($inicioSemanaActual . ' -7 days'));
-    $inicioSemanaPrevia = date('Y-m-d', strtotime($inicioSemanaActual . ' -14 days'));
+// Límites del periodo natural anterior al actual ('inicio'/'fin', fin exclusivo)
+// y del previo a ese ('inicio_previo'), para el resumen de semana, mes o año.
+function limitesResumen($periodo) {
+    switch ($periodo) {
+        case 'mes':
+            $fin = date('Y-m-01');
+            $inicio = date('Y-m-d', strtotime($fin . ' -1 month'));
+            $inicioPrevio = date('Y-m-d', strtotime($fin . ' -2 months'));
+            break;
+        case 'anio':
+            $fin = date('Y-01-01');
+            $inicio = date('Y-m-d', strtotime($fin . ' -1 year'));
+            $inicioPrevio = date('Y-m-d', strtotime($fin . ' -2 years'));
+            break;
+        default:
+            $fin = date('Y-m-d', strtotime('monday this week'));
+            $inicio = date('Y-m-d', strtotime($fin . ' -7 days'));
+            $inicioPrevio = date('Y-m-d', strtotime($fin . ' -14 days'));
+    }
+    return ['inicio' => $inicio, 'fin' => $fin, 'inicio_previo' => $inicioPrevio];
+}
+
+// Construye los datos del resumen de un periodo ('semana', 'mes' o 'anio'):
+// compara el periodo natural (semana lun-dom, mes o año) inmediatamente
+// anterior al actual con el previo a ese, sin importar qué día del periodo en
+// curso se esté mostrando el resumen.
+function obtenerResumenPeriodo($db, $periodo) {
+    $lim = limitesResumen($periodo);
+    $inicioPasado = $lim['inicio'];
+    $finPasado = $lim['fin'];
+    $inicioPrevio = $lim['inicio_previo'];
 
     $r = [
-        'inicio' => $inicioSemanaPasada,
-        'fin' => $inicioSemanaActual, // exclusivo (el domingo es el día anterior)
+        'periodo' => $periodo,
+        'inicio' => $inicioPasado,
+        'fin' => $finPasado, // exclusivo
+        'dias_periodo' => (int)round((strtotime($finPasado) - strtotime($inicioPasado)) / 86400),
     ];
 
-    $r['tiempo'] = tiempoYDiasEnRango($db, $inicioSemanaPasada, $inicioSemanaActual);
-    $r['tiempo_previo'] = tiempoYDiasEnRango($db, $inicioSemanaPrevia, $inicioSemanaPasada);
+    $r['tiempo'] = tiempoYDiasEnRango($db, $inicioPasado, $finPasado);
+    $r['tiempo_previo'] = tiempoYDiasEnRango($db, $inicioPrevio, $inicioPasado);
 
     // Puntuación total del repertorio: snapshot rodante de 30 días a cierre de
-    // cada semana, para poder mostrar la diferencia semana contra semana.
-    $r['puntuacion'] = puntuacionTotalEnFecha($db, $inicioSemanaActual, 5);
-    $r['puntuacion_previa'] = puntuacionTotalEnFecha($db, $inicioSemanaPasada, 5);
+    // cada periodo, para poder mostrar la diferencia periodo contra periodo.
+    $r['puntuacion'] = puntuacionTotalEnFecha($db, $finPasado, 5);
+    $r['puntuacion_previa'] = puntuacionTotalEnFecha($db, $inicioPasado, 5);
     $r['puntuacion_diff'] = round($r['puntuacion']['total'] - $r['puntuacion_previa']['total'], 1);
 
-    // Piezas trabajadas la semana pasada, con su media de fallos y comparación
-    // con la semana previa (solo cuenta como "mejora" si hay datos en ambas semanas).
+    // Piezas trabajadas en el periodo, con su media de fallos y comparación
+    // con el periodo previo (solo cuenta como "mejora" si hay datos en ambos).
     $stmt = $db->prepare("
         SELECT DISTINCT p.id, p.compositor, p.titulo
         FROM fallos f
         JOIN piezas p ON f.pieza_id = p.id
         WHERE f.fecha_registro >= :inicio AND f.fecha_registro < :fin
     ");
-    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $stmt->execute([':inicio' => $inicioPasado, ':fin' => $finPasado]);
     $piezasTrabajadas = $stmt->fetchAll();
 
     $mejoras = [];
     foreach ($piezasTrabajadas as $pieza) {
-        $actual = mediaFallosRango($db, $pieza['id'], $inicioSemanaPasada, $inicioSemanaActual);
-        $anterior = mediaFallosRango($db, $pieza['id'], $inicioSemanaPrevia, $inicioSemanaPasada);
+        $actual = mediaFallosRango($db, $pieza['id'], $inicioPasado, $finPasado);
+        $anterior = mediaFallosRango($db, $pieza['id'], $inicioPrevio, $inicioPasado);
         if ($actual === null || $anterior === null) {
             continue;
         }
@@ -493,13 +555,13 @@ function obtenerResumenSemanal($db) {
     $r['mejoras'] = $mejoras;
     $r['logro_pieza'] = $mejoras[0] ?? null;
 
-    // Piezas nuevas añadidas al repertorio esa semana
+    // Piezas nuevas añadidas al repertorio en el periodo
     $stmt = $db->prepare("
         SELECT id, compositor, titulo FROM piezas
         WHERE fecha_creacion >= :inicio AND fecha_creacion < :fin
         ORDER BY fecha_creacion
     ");
-    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $stmt->execute([':inicio' => $inicioPasado, ':fin' => $finPasado]);
     $r['piezas_nuevas'] = $stmt->fetchAll();
 
     // Avisos de progresión pendientes (tempo subido / graduación a mantenimiento),
@@ -512,7 +574,7 @@ function obtenerResumenSemanal($db) {
     ");
     $r['avisos_progresion'] = $stmt->fetchAll();
 
-    // Técnica: ejercicios trabajados esa semana y BPM medio, comparado con la semana previa
+    // Técnica: ejercicios trabajados en el periodo y BPM medio, comparado con el previo
     $stmt = $db->prepare("
         SELECT
             COUNT(*) as total,
@@ -523,24 +585,24 @@ function obtenerResumenSemanal($db) {
         FROM sesion_tecnica_ejercicios
         WHERE fecha >= :inicio AND fecha < :fin
     ");
-    $stmt->execute([':inicio' => $inicioSemanaPasada, ':fin' => $inicioSemanaActual]);
+    $stmt->execute([':inicio' => $inicioPasado, ':fin' => $finPasado]);
     $tecnica = $stmt->fetch();
     $tecnica['total'] = (int)($tecnica['total'] ?? 0);
     $tecnica['bien'] = (int)($tecnica['bien'] ?? 0);
     $tecnica['mal'] = (int)($tecnica['mal'] ?? 0);
 
-    $stmt->execute([':inicio' => $inicioSemanaPrevia, ':fin' => $inicioSemanaPasada]);
+    $stmt->execute([':inicio' => $inicioPrevio, ':fin' => $inicioPasado]);
     $tecnicaPrevia = $stmt->fetch();
     $tecnica['bpm_medio_previo'] = $tecnicaPrevia['bpm_medio'] ?? null;
     $r['tecnica'] = $tecnica;
 
-    // Aviso neutro de "semana floja": bajada apreciable de tiempo o de días
-    // respecto a la semana anterior (solo si esa semana anterior sí tuvo práctica).
-    $r['semana_floja'] = false;
+    // Aviso neutro de "periodo flojo": bajada apreciable de tiempo o de días
+    // respecto al periodo anterior (solo si ese periodo anterior sí tuvo práctica).
+    $r['periodo_flojo'] = false;
     if ($r['tiempo_previo']['dias'] > 0) {
         $bajadaTiempo = $r['tiempo']['segundos'] < $r['tiempo_previo']['segundos'] * 0.7;
         $bajadaDias = $r['tiempo']['dias'] < $r['tiempo_previo']['dias'];
-        $r['semana_floja'] = $bajadaTiempo || $bajadaDias;
+        $r['periodo_flojo'] = $bajadaTiempo || $bajadaDias;
     }
 
     return $r;

@@ -1,47 +1,46 @@
 <%- include('partials/header') %>
 
 <div class="card">
-  <% const diaMes = (s) => { const [, m, d] = s.split('-'); return `${d}/${m}`; }; %>
-  <h2>📅 Resumen de la semana del <%= diaMes(resumen.inicio) %> al <%= diaMes(resumen.fin) %></h2>
+  <h2>📅 <%= textos.titulo %></h2>
 
   <% if (resumen.tiempo.dias === 0) { %>
-    <p>No hubo ninguna sesión registrada la semana pasada. ¡Esta es una buena semana para retomarlo!</p>
+    <p><%= textos.sinPractica %></p>
   <% } else { %>
   <div class="stats-grid">
     <div class="stat-box">
       <h3><%= h.formatearTiempo(resumen.tiempo.segundos) %></h3>
       <p>Tiempo practicado</p>
-      <%- h.compararTexto(resumen.tiempo.segundos, resumen.tiempoPrevio.segundos) %>
+      <%- h.compararTexto(resumen.tiempo.segundos, resumen.tiempoPrevio.segundos, textos) %>
     </div>
     <div class="stat-box">
-      <h3><%= resumen.tiempo.dias %>/7 días</h3>
+      <h3><%= resumen.tiempo.dias %>/<%= resumen.diasPeriodo %> días</h3>
       <p>Días practicados</p>
-      <%- h.compararTexto(resumen.tiempo.dias, resumen.tiempoPrevio.dias) %>
+      <%- h.compararTexto(resumen.tiempo.dias, resumen.tiempoPrevio.dias, textos) %>
     </div>
     <div class="stat-box">
       <h3>🏅 <%= resumen.puntuacion.total.toFixed(1) %></h3>
       <p><%= resumen.puntuacion.piezas %> piezas puntuadas</p>
       <% if (resumen.puntuacionPrevia.piezas === 0) { %>
-        <small style="opacity:0.7;">(sin datos suficientes la semana pasada)</small>
+        <small style="opacity:0.7;">(sin datos suficientes <%= textos.pasado %>)</small>
       <% } else if (Math.abs(resumen.puntuacionDiff) < 0.05) { %>
-        <small style="opacity:0.7;">(igual que la semana anterior)</small>
+        <small style="opacity:0.7;">(igual que <%= textos.anterior %>)</small>
       <% } else { %>
-        <small style="opacity:0.7;">(<%= resumen.puntuacionDiff > 0 ? '+' : '' %><%= resumen.puntuacionDiff.toFixed(1) %> vs. semana anterior)</small>
+        <small style="opacity:0.7;">(<%= resumen.puntuacionDiff > 0 ? '+' : '' %><%= resumen.puntuacionDiff.toFixed(1) %> vs. <%= textos.vs %>)</small>
       <% } %>
     </div>
   </div>
   <% } %>
 </div>
 
-<% if (resumen.semanaFloja) { %>
+<% if (resumen.periodoFlojo) { %>
 <div class="alert alert-info">
-  📉 Esta semana bajaste el ritmo respecto a la anterior. No pasa nada, pero si puedes, intenta recuperarlo esta semana.
+  📉 <%= textos.flojo %>
 </div>
 <% } %>
 
 <% if (resumen.logroPieza) { %>
 <div class="alert alert-success">
-  🏆 <strong>Logro de la semana:</strong>
+  🏆 <strong><%= textos.logro %>:</strong>
   <%= resumen.logroPieza.pieza.compositor %> - <%= resumen.logroPieza.pieza.titulo %>
   bajó su media de fallos de <strong><%= resumen.logroPieza.mediaAnterior.toFixed(2) %></strong>
   a <strong><%= resumen.logroPieza.mediaActual.toFixed(2) %></strong> por pase.
@@ -50,10 +49,10 @@
 
 <% if (resumen.mejoras.length > 1) { %>
 <div class="card">
-  <h2>🎹 Piezas con mejora esta semana</h2>
+  <h2>🎹 Piezas con mejora <%= textos.este %></h2>
   <table>
     <thead>
-      <tr><th>Pieza</th><th>Media de fallos (semana anterior)</th><th>Media de fallos (esta semana)</th></tr>
+      <tr><th>Pieza</th><th>Media de fallos (<%= textos.vs %>)</th><th>Media de fallos (<%= textos.este %>)</th></tr>
     </thead>
     <tbody>
       <% resumen.mejoras.forEach(m => { %>
@@ -103,14 +102,17 @@
     (<%= resumen.tecnica.bien %> con resultado "bien" de <%= resumen.tecnica.total %> valoraciones).
     BPM medio practicado: <strong><%= Math.round(resumen.tecnica.bpmMedio) %></strong>
     <% if (resumen.tecnica.bpmMedioPrevio != null) { %>
-      <%- h.compararTexto(resumen.tecnica.bpmMedio, resumen.tecnica.bpmMedioPrevio) %>
+      <%- h.compararTexto(resumen.tecnica.bpmMedio, resumen.tecnica.bpmMedioPrevio, textos) %>
     <% } %>
   </p>
 </div>
 <% } %>
 
-<div class="card" style="text-align:center;">
-  <a href="/resumen-semanal?continuar=1" class="btn btn-success">Empezar a practicar →</a>
+<div class="card" style="text-align:center; display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
+  <% if (textos.informeUrl) { %>
+    <a href="<%= textos.informeUrl %>" class="btn btn-primary"><%= textos.informeTexto %></a>
+  <% } %>
+  <a href="/resumen?periodo=<%= resumen.periodo %>&continuar=1" class="btn btn-success">Empezar a practicar →</a>
 </div>
 
 <%- include('partials/footer') %>
